@@ -180,9 +180,33 @@ class SoundEngine {
         this.beep(base + 150, 80, "triangle", 0.04, 0.16);
         break;
       }
+      case "goose": {
+        // Two nasal honks
+        this.beep(330, 160, "sawtooth", 0.06, 0, 260);
+        this.beep(350, 200, "sawtooth", 0.06, 0.22, 250);
+        break;
+      }
+      case "codey": {
+        // Happy little yips
+        this.beep(700, 70, "sine", 0.05, 0, 1100);
+        this.beep(800, 90, "sine", 0.05, 0.1, 1250);
+        break;
+      }
       default:
         this.beep(base, 100, "square", 0.05);
     }
+  }
+
+  // Walking through a door
+  door() {
+    this.beep(520, 50, "square", 0.04);
+    this.beep(390, 70, "square", 0.04, 0.06);
+  }
+
+  // ION train approaching: a double "ding ding"
+  trainBell() {
+    this.beep(1320, 180, "triangle", 0.05);
+    this.beep(1320, 220, "triangle", 0.05, 0.25);
   }
 }
 

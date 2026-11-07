@@ -1,11 +1,12 @@
-// Tile-based world for the explore game.
-// Gen 3 Pokemon-inspired styling: 5-tile-wide houses with 2-row tiled roofs.
+// Tile maps for the explore game: the UW campus overworld plus building
+// interiors. Gen 3 Pokemon-inspired styling.
 
 export const TILE_SIZE = 40;
-export const MAP_WIDTH = 40;
-export const MAP_HEIGHT = 30;
+
+export type Direction = 0 | 1 | 2 | 3; // down, up, left, right
 
 export type TileType =
+  // Outdoors
   | "grass"
   | "grassTuft"
   | "path"
@@ -20,7 +21,30 @@ export type TileType =
   | "buildingWall"
   | "buildingWindow"
   | "buildingDoor"
-  | "doorStep";
+  | "doorStep"
+  | "track"
+  | "trackCrossing"
+  | "crossbuck"
+  // Indoors
+  | "void"
+  | "wallTop"
+  | "wall"
+  | "wallWindow"
+  | "whiteboard"
+  | "noticeBoard"
+  | "doorLocked"
+  | "doorCSC"
+  | "stairs"
+  | "floor"
+  | "rug"
+  | "exitMat"
+  | "plant"
+  | "desk"
+  | "couch"
+  | "bookshelf"
+  | "bench";
+
+export type MapId = "campus" | "mc" | "csc";
 
 export interface Building {
   x: number;
@@ -34,23 +58,60 @@ export interface Building {
   wallShadow: string;
 }
 
-// Ruby/Sapphire-style palette per building
-export const buildings: Building[] = [
+// Walking into (x, y) moves the player to another map.
+export interface Warp {
+  x: number;
+  y: number;
+  to: MapId;
+  toX: number;
+  toY: number;
+  facing: Direction;
+}
+
+// A small name plate drawn above tile (x, y), e.g. the sign over the CSC door.
+export interface MapLabel {
+  x: number;
+  y: number;
+  text: string;
+  accent: string;
+}
+
+// A railway crossing sign whose lights flash when an ION train is near crossingX.
+export interface Crossbuck {
+  x: number;
+  y: number;
+  crossingX: number;
+}
+
+export interface GameMap {
+  id: MapId;
+  name: string; // shown when you enter the map
+  width: number;
+  height: number;
+  tiles: TileType[][];
+  buildings: Building[];
+  labels: MapLabel[];
+  warps: Warp[];
+  trackRows: number[]; // rows the ION trains run along (campus only)
+  crossbucks: Crossbuck[];
+  background: string; // fill colour around the map when it's smaller than the screen
+}
+
+// ============ CAMPUS ============
+
+const CAMPUS_W = 40;
+const CAMPUS_H = 30;
+const MAIN_PATH_Y = 13;
+// Two tracks, one per direction. Trains run on the right, like in Canada:
+// westbound on the north track, eastbound on the south track.
+const TRACK_ROWS = [10, 11];
+
+// North row: DC, MC, SLC. E7 sits just above the tall grass.
+const campusBuildings: Building[] = [
   {
     x: 4,
     y: 3,
     w: 5,
-    h: 4,
-    label: "E7",
-    roofColor: "#e88a4a",
-    roofShadow: "#a85220",
-    wallColor: "#f0dcb4",
-    wallShadow: "#a88860",
-  },
-  {
-    x: 17,
-    y: 3,
-    w: 6,
     h: 4,
     label: "DC",
     roofColor: "#c86868",
@@ -59,20 +120,20 @@ export const buildings: Building[] = [
     wallShadow: "#907864",
   },
   {
+    x: 17,
+    y: 3,
+    w: 6,
+    h: 4,
+    label: "MC",
+    roofColor: "#9a9aa6",
+    roofShadow: "#5c5c6a",
+    wallColor: "#dcd8cc",
+    wallShadow: "#8c887c",
+  },
+  {
     x: 31,
     y: 3,
     w: 5,
-    h: 4,
-    label: "MC",
-    roofColor: "#8878b8",
-    roofShadow: "#504878",
-    wallColor: "#eee0e8",
-    wallShadow: "#8878a0",
-  },
-  {
-    x: 17,
-    y: 16,
-    w: 6,
     h: 4,
     label: "SLC",
     roofColor: "#e8a860",
@@ -80,153 +141,356 @@ export const buildings: Building[] = [
     wallColor: "#f0d8a8",
     wallShadow: "#a88060",
   },
+  {
+    x: 17,
+    y: 16,
+    w: 6,
+    h: 4,
+    label: "E7",
+    roofColor: "#4f8fc0",
+    roofShadow: "#2c5a85",
+    wallColor: "#e4ebf0",
+    wallShadow: "#8898a8",
+  },
 ];
 
-function generate(): TileType[][] {
+const buildingNamed = (label: string): Building => {
+  const b = campusBuildings.find((x) => x.label === label);
+  if (!b) throw new Error(`Missing building ${label}`);
+  return b;
+};
+const doorOf = (b: Building) => ({ x: b.x + Math.floor(b.w / 2), y: b.y + b.h - 1 });
+
+const E7 = buildingNamed("E7");
+const E7_DOOR = doorOf(E7);
+const MC_DOOR = doorOf(buildingNamed("MC"));
+
+// Vardaan stands just right of E7's front door. The player starts beside him,
+// facing him, so the first thing they see is the talk prompt.
+export const GUIDE_SPOT = { x: E7_DOOR.x + 1, y: E7_DOOR.y + 1 };
+export const SPAWN = { x: GUIDE_SPOT.x + 1, y: GUIDE_SPOT.y, facing: 2 as Direction };
+
+function generateCampus(): { tiles: TileType[][]; crossbucks: Crossbuck[] } {
+  const W = CAMPUS_W;
+  const H = CAMPUS_H;
   const map: TileType[][] = [];
-  for (let y = 0; y < MAP_HEIGHT; y++) {
+  for (let y = 0; y < H; y++) {
     const row: TileType[] = [];
-    for (let x = 0; x < MAP_WIDTH; x++) {
-      if (x === 0 || y === 0 || x === MAP_WIDTH - 1 || y === MAP_HEIGHT - 1) {
-        row.push("tree");
-      } else {
-        row.push("grass");
-      }
+    for (let x = 0; x < W; x++) {
+      row.push(x === 0 || y === 0 || x === W - 1 || y === H - 1 ? "tree" : "grass");
     }
     map.push(row);
   }
 
-  const fillRect = (
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    tile: TileType
-  ) => {
+  const fillRect = (x: number, y: number, w: number, h: number, tile: TileType) => {
     for (let dy = 0; dy < h; dy++) {
       for (let dx = 0; dx < w; dx++) {
-        if (
-          y + dy > 0 &&
-          y + dy < MAP_HEIGHT - 1 &&
-          x + dx > 0 &&
-          x + dx < MAP_WIDTH - 1
-        ) {
-          map[y + dy][x + dx] = tile;
-        }
+        const tx = x + dx;
+        const ty = y + dy;
+        if (ty > 0 && ty < H - 1 && tx > 0 && tx < W - 1) map[ty][tx] = tile;
       }
     }
   };
+  const setOnGrass = (x: number, y: number, tile: TileType) => {
+    if (map[y]?.[x] === "grass") map[y][x] = tile;
+  };
 
-  // Main horizontal path across the middle
-  fillRect(1, 13, MAP_WIDTH - 2, 2, "path");
+  // Main east-west path
+  fillRect(1, MAIN_PATH_Y, W - 2, 2, "path");
 
-  // Vertical paths connecting each building's door
-  for (const b of buildings) {
-    const doorX = b.x + Math.floor(b.w / 2);
-    const doorY = b.y + b.h - 1;
-    if (b.y < 13) {
-      fillRect(doorX, doorY + 1, 1, 13 - (doorY + 1), "path");
-    } else {
-      fillRect(doorX, 15, 1, b.y - 15, "path");
-    }
+  // Paths from the north buildings' doors down to the main path. Where they
+  // cross the ION tracks they become level crossings.
+  const crossingXs: number[] = [];
+  for (const b of campusBuildings) {
+    if (b.y >= MAIN_PATH_Y) continue;
+    const door = doorOf(b);
+    fillRect(door.x, door.y + 1, 1, MAIN_PATH_Y - (door.y + 1), "path");
+    crossingXs.push(door.x);
   }
 
-  // Water pond
-  fillRect(24, 8, 4, 3, "water");
+  // A path loops around E7 to its front door (doors face south).
+  const left = E7.x - 1;
+  const right = E7.x + E7.w;
+  const frontY = E7.y + E7.h;
+  fillRect(left, MAIN_PATH_Y + 2, 1, frontY - (MAIN_PATH_Y + 2) + 1, "path");
+  fillRect(right, MAIN_PATH_Y + 2, 1, frontY - (MAIN_PATH_Y + 2) + 1, "path");
+  fillRect(left, frontY, right - left + 1, 1, "path");
+
+  // Pond west of E7
+  fillRect(8, 16, 4, 3, "water");
 
   // Tall grass encounter zones
   fillRect(3, 21, 10, 6, "tallGrass");
   fillRect(27, 21, 10, 6, "tallGrass");
   fillRect(15, 21, 8, 3, "tallGrass");
 
-  // Flowers in patches (like the screenshot)
-  const flowerPatches: [number, number][] = [
-    [2, 10], [3, 10], [2, 11],
-    [10, 11], [11, 11],
-    [14, 10], [15, 10],
-    [29, 11], [30, 11],
-    [35, 10], [36, 10], [35, 11],
+  const flowers: [number, number][] = [
+    [2, 8], [3, 8], [2, 9],
+    [10, 8], [11, 8],
+    [14, 8], [15, 8],
+    [26, 8], [27, 8],
+    [36, 8], [37, 8], [36, 9],
     [2, 17], [3, 17], [2, 18],
-    [12, 18], [13, 18],
-    [24, 17], [25, 17],
-    [37, 18], [36, 18],
+    [13, 17], [13, 18],
+    [25, 17], [26, 17],
+    [36, 18], [37, 18],
     [5, 28], [6, 28],
     [34, 28], [35, 28],
   ];
   const tufts: [number, number][] = [
-    [10, 5], [22, 5], [14, 12], [26, 12], [4, 19], [33, 19], [8, 25], [30, 25],
+    [10, 5], [26, 5], [14, 12], [27, 12], [4, 19], [33, 19],
   ];
-  for (const [x, y] of flowerPatches) {
-    if (map[y]?.[x] === "grass") map[y][x] = "flower";
-  }
-  for (const [x, y] of tufts) {
-    if (map[y]?.[x] === "grass") map[y][x] = "grassTuft";
-  }
+  for (const [x, y] of flowers) setOnGrass(x, y, "flower");
+  for (const [x, y] of tufts) setOnGrass(x, y, "grassTuft");
 
-  // Paint building tiles
-  for (const b of buildings) {
+  setOnGrass(10, 15, "sign");
+  setOnGrass(30, 15, "sign");
+
+  // Buildings
+  for (const b of campusBuildings) {
     for (let dy = 0; dy < b.h; dy++) {
       for (let dx = 0; dx < b.w; dx++) {
         const x = b.x + dx;
         const y = b.y + dy;
         if (dy === 0) map[y][x] = "buildingRoofTop";
         else if (dy === 1) map[y][x] = "buildingRoofBase";
-        else if (dy === b.h - 1 && dx === Math.floor(b.w / 2))
-          map[y][x] = "buildingDoor";
-        else if (
-          dy === b.h - 2 &&
-          (dx === 1 || dx === b.w - 2)
-        )
-          map[y][x] = "buildingWindow";
+        else if (dy === b.h - 1 && dx === Math.floor(b.w / 2)) map[y][x] = "buildingDoor";
+        else if (dy === b.h - 2 && (dx === 1 || dx === b.w - 2)) map[y][x] = "buildingWindow";
         else map[y][x] = "buildingWall";
       }
     }
-    // Doorstep tile directly in front of the door
-    const doorX = b.x + Math.floor(b.w / 2);
-    const stepY = b.y + b.h;
-    if (stepY < MAP_HEIGHT - 1 && map[stepY][doorX] !== "path") {
-      map[stepY][doorX] = "doorStep";
+  }
+
+  // ION tracks run the full width of the map, through the tree border, so
+  // trains appear to come from off campus.
+  for (const row of TRACK_ROWS) {
+    for (let x = 0; x < W; x++) {
+      map[row][x] = crossingXs.includes(x) ? "trackCrossing" : "track";
     }
   }
 
-  // A mailbox-style sign near spawn
-  if (map[12][21] === "grass") map[12][21] = "sign";
-  if (map[15][6] === "path") {
-    // small sign placed on grass instead
+  // A crossing sign on each side of every crossing.
+  const crossbucks: Crossbuck[] = [];
+  for (const cx of crossingXs) {
+    const spots: [number, number][] = [
+      [cx - 1, TRACK_ROWS[0] - 1],
+      [cx + 1, TRACK_ROWS[TRACK_ROWS.length - 1] + 1],
+    ];
+    for (const [x, y] of spots) {
+      map[y][x] = "crossbuck";
+      crossbucks.push({ x, y, crossingX: cx });
+    }
   }
-  if (map[15][10] === "grass") map[15][10] = "sign";
-  if (map[15][30] === "grass") map[15][30] = "sign";
 
-  // ============ HIDDEN DEV ROOM ============
-  // A small enclosed clearing in the SE corner accessed by finding one lone
-  // tall-grass tile amid the regular grass south of the SE encounter zone.
-  const setTile = (x: number, y: number, t: TileType) => {
-    if (map[y]?.[x] !== undefined) map[y][x] = t;
-  };
-  // Frame trees around the entrance and room
-  setTile(33, 26, "tree");
-  setTile(37, 26, "tree");
-  setTile(34, 27, "tree");
-  setTile(36, 27, "tree");
-  setTile(33, 28, "tree");
-  setTile(37, 28, "tree");
-  // The hidden path — a single tall-grass tile that keeps going south
-  setTile(35, 27, "tallGrass");
-
-  return map;
+  return { tiles: map, crossbucks };
 }
 
-export const worldMap: TileType[][] = generate();
+// ============ INTERIORS ============
+// Drawn as text so the layout is easy to read and edit. One character per tile.
 
-export const isSolid = (tile: TileType): boolean =>
-  tile === "tree" ||
-  tile === "water" ||
-  tile === "sign" ||
-  tile === "buildingRoofTop" ||
-  tile === "buildingRoofBase" ||
-  tile === "buildingWall" ||
-  tile === "buildingWindow";
+const LEGEND: Record<string, TileType> = {
+  "#": "void",
+  "^": "wallTop",
+  "=": "wall",
+  W: "wallWindow",
+  B: "whiteboard",
+  N: "noticeBoard",
+  L: "doorLocked",
+  C: "doorCSC",
+  S: "stairs",
+  ".": "floor",
+  r: "rug",
+  E: "exitMat",
+  p: "plant",
+  d: "desk",
+  c: "couch",
+  k: "bookshelf",
+  b: "bench",
+};
+
+const parseRows = (id: string, rows: string[]): TileType[][] => {
+  const width = rows[0].length;
+  return rows.map((row, y) => {
+    if (row.length !== width) {
+      throw new Error(`Map ${id}: row ${y} is ${row.length} wide, expected ${width}`);
+    }
+    return Array.from(row).map((ch, x) => {
+      const tile = LEGEND[ch];
+      if (!tile) throw new Error(`Map ${id}: unknown tile "${ch}" at ${x},${y}`);
+      return tile;
+    });
+  });
+};
+
+// MC hallway: stairs in the corner, a row of office doors, and a rug that
+// leads from the entrance to the CSC office door (C).
+const MC_ROWS = [
+  "#^^^^^^^^^^^^^^^^^^#",
+  "#SS==L=N=L===C==L==#",
+  "#SS..........r...p.#",
+  "#.........rrrr.....#",
+  "#.........r........#",
+  "#.........r........#",
+  "#.........r........#",
+  "#.........r........#",
+  "#.........r........#",
+  "#.........r........#",
+  "#pbb......r....bbp.#",
+  "##########E#########",
+];
+const MC_CSC_DOOR = { x: 13, y: 1 };
+const MC_EXIT = { x: 10, y: 11 };
+
+// CSC office: computers along the back wall, a couch, and Codey on the rug.
+const CSC_ROWS = [
+  "#^^^^^^^^^^^#",
+  "#=W=N=B===W=#",
+  "#kddd...dddp#",
+  "#k..........#",
+  "#....rrr....#",
+  "#....rrr....#",
+  "#.......ccc.#",
+  "#p..........#",
+  "######E######",
+];
+const CSC_EXIT = { x: 6, y: 8 };
+
+const makeInterior = (
+  id: MapId,
+  name: string,
+  rows: string[],
+  labels: MapLabel[],
+  warps: Warp[]
+): GameMap => {
+  const tiles = parseRows(id, rows);
+  return {
+    id,
+    name,
+    width: tiles[0].length,
+    height: tiles.length,
+    tiles,
+    buildings: [],
+    labels,
+    warps,
+    trackRows: [],
+    crossbucks: [],
+    background: "#1c1724",
+  };
+};
+
+const campus = generateCampus();
+
+export const MAPS: Record<MapId, GameMap> = {
+  campus: {
+    id: "campus",
+    name: "University of Waterloo",
+    width: CAMPUS_W,
+    height: CAMPUS_H,
+    tiles: campus.tiles,
+    buildings: campusBuildings,
+    labels: [],
+    warps: [{ x: MC_DOOR.x, y: MC_DOOR.y, to: "mc", toX: MC_EXIT.x, toY: MC_EXIT.y - 1, facing: 1 }],
+    trackRows: TRACK_ROWS,
+    crossbucks: campus.crossbucks,
+    background: "#0f172a",
+  },
+  mc: makeInterior(
+    "mc",
+    "MC: Mathematics & Computer Building",
+    MC_ROWS,
+    [{ x: MC_CSC_DOOR.x, y: MC_CSC_DOOR.y, text: "CSC", accent: "#3b82f6" }],
+    [
+      { x: MC_EXIT.x, y: MC_EXIT.y, to: "campus", toX: MC_DOOR.x, toY: MC_DOOR.y + 1, facing: 0 },
+      { x: MC_CSC_DOOR.x, y: MC_CSC_DOOR.y, to: "csc", toX: CSC_EXIT.x, toY: CSC_EXIT.y - 1, facing: 1 },
+    ]
+  ),
+  csc: makeInterior(
+    "csc",
+    "CSC Office",
+    CSC_ROWS,
+    [],
+    [{ x: CSC_EXIT.x, y: CSC_EXIT.y, to: "mc", toX: MC_CSC_DOOR.x, toY: MC_CSC_DOOR.y + 1, facing: 0 }]
+  ),
+};
+
+// ============ RULES ============
+
+const WALKABLE = new Set<TileType>([
+  "grass",
+  "grassTuft",
+  "path",
+  "flower",
+  "sand",
+  "tallGrass",
+  "doorStep",
+  "trackCrossing",
+  "floor",
+  "rug",
+]);
+
+export const isSolid = (tile: TileType): boolean => !WALKABLE.has(tile);
 
 export const isTallGrass = (tile: TileType): boolean => tile === "tallGrass";
 
-export const SPAWN = { x: 20, y: 14 };
+export const buildingAt = (map: GameMap, x: number, y: number): Building | undefined =>
+  map.buildings.find((b) => x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h);
+
+export const warpAt = (map: GameMap, x: number, y: number): Warp | undefined =>
+  map.warps.find((w) => w.x === x && w.y === y);
+
+// Shown when the player walks into something they can't pass.
+export const bumpMessage = (map: GameMap, x: number, y: number): string | null => {
+  switch (map.tiles[y]?.[x]) {
+    case "buildingDoor": {
+      const b = buildingAt(map, x, y);
+      return b ? `${b.label} is locked right now.` : "It's locked.";
+    }
+    case "doorLocked":
+      return "This door is locked.";
+    case "stairs":
+      return "The upper floors are closed off for now.";
+    case "track":
+      return "Stay off the tracks! Cross at a crossing.";
+    default:
+      return null;
+  }
+};
+
+const EXAMINE_TEXT: Partial<Record<TileType, string>> = {
+  desk: "A computer is halfway through a very long compile.",
+  bookshelf: "Shelves of old textbooks and printed assignments.",
+  whiteboard: "Someone left half a proof on the whiteboard.",
+  noticeBoard: "Posters for club events, hackathons and free food.",
+  couch: "A well-loved couch. It has seen a lot of all-nighters.",
+  bench: "A bench. Students nap here between lectures.",
+  plant: "A potted plant. Someone waters it, probably.",
+  wallWindow: "You can see campus through the window.",
+  crossbuck: "ION crossing. Look both ways.",
+  sign: "A campus sign. You are here.",
+  water: "A pond. The geese love it here.",
+};
+
+// Shown when the player faces something and presses the action button.
+export const examineMessage = (map: GameMap, x: number, y: number): string | null => {
+  const tile = map.tiles[y]?.[x];
+  if (!tile) return null;
+  return bumpMessage(map, x, y) ?? EXAMINE_TEXT[tile] ?? null;
+};
+
+// Catch layout mistakes (a warp into a wall, a spawn on a tree) at load time.
+const validateMaps = () => {
+  const walkable = (id: MapId, x: number, y: number) => {
+    const tile = MAPS[id].tiles[y]?.[x];
+    return tile !== undefined && WALKABLE.has(tile);
+  };
+  for (const map of Object.values(MAPS)) {
+    for (const w of map.warps) {
+      if (!walkable(w.to, w.toX, w.toY)) {
+        throw new Error(`Warp from ${map.id} ${w.x},${w.y} lands on a solid tile in ${w.to}`);
+      }
+    }
+  }
+  if (!walkable("campus", SPAWN.x, SPAWN.y)) throw new Error("Spawn is on a solid tile");
+  if (!walkable("campus", GUIDE_SPOT.x, GUIDE_SPOT.y)) throw new Error("Guide spot is on a solid tile");
+};
+validateMaps();

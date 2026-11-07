@@ -16,7 +16,7 @@ export interface PokemonSpecies {
   type: PokemonType;
   primary: string;
   secondary: string;
-  shape: "blob" | "bug" | "sparky" | "aqua" | "brick" | "leaf";
+  shape: "blob" | "bug" | "sparky" | "aqua" | "brick" | "leaf" | "goose" | "codey";
   // Used to color the pokemon frame; overrides shape color when set.
   isLegendary?: boolean;
 }
@@ -28,7 +28,25 @@ export interface Pokemon {
 }
 
 export const SPECIES: Record<string, PokemonSpecies> = {
-  // Starters offered by Prof. Chen
+  // Campus gifts
+  honkling: {
+    id: "honkling",
+    name: "Honkling",
+    type: "flying",
+    primary: "#8a7a66", // Canada goose brown-grey body
+    secondary: "#1a1a1a", // black head and neck
+    shape: "goose",
+  },
+  codey: {
+    id: "codey",
+    name: "Codey",
+    type: "water",
+    primary: "#5aaff5", // CSC mascot blue
+    secondary: "#26285e", // navy glasses and eyes
+    shape: "codey",
+  },
+
+  // Starters offered by Prof. Chen (no longer given out; kept for the next pass)
   reactle: {
     id: "reactle",
     name: "Reactle",

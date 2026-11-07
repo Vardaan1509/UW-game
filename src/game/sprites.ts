@@ -293,6 +293,267 @@ const drawBuildingDoor = (
   P(ctx, x, y, 2, 8, 6, 1, "#a89078");
 };
 
+// ============ ION TRACKS ============
+
+const RAIL = "#c9ced6";
+const RAIL_SHADOW = "#6e737c";
+
+const drawRails = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  P(ctx, x, y, 0, 2.5, 10, 1, RAIL);
+  P(ctx, x, y, 0, 3.5, 10, 0.5, RAIL_SHADOW);
+  P(ctx, x, y, 0, 6.5, 10, 1, RAIL);
+  P(ctx, x, y, 0, 7.5, 10, 0.5, RAIL_SHADOW);
+};
+
+const drawTrack = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  // Gravel ballast
+  ctx.fillStyle = "#8f877a";
+  ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+  P(ctx, x, y, 1, 0.5, 1, 1, "#7a7266");
+  P(ctx, x, y, 6, 0, 1, 1, "#a59d90");
+  P(ctx, x, y, 3, 9, 1, 1, "#7a7266");
+  P(ctx, x, y, 8, 8.8, 1, 1, "#a59d90");
+  // Wooden ties, evenly spaced so the pattern tiles seamlessly
+  for (const tx of [0.5, 3, 5.5, 8]) {
+    P(ctx, x, y, tx, 1.5, 1.5, 7, "#6b4a2e");
+    P(ctx, x, y, tx, 1.5, 1.5, 0.5, "#86603c");
+  }
+  drawRails(ctx, x, y);
+};
+
+const drawTrackCrossing = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  // Concrete crossing panels with the rails set flush into them
+  ctx.fillStyle = "#d8cfb8";
+  ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+  P(ctx, x, y, 0, 0, 0.25, 10, "#b8ae96");
+  P(ctx, x, y, 5, 0, 0.25, 10, "#b8ae96");
+  P(ctx, x, y, 2, 5, 1, 1, "#c8bfa6");
+  P(ctx, x, y, 7, 1, 1, 1, "#e6dfcc");
+  drawRails(ctx, x, y);
+};
+
+// Lamp positions on the crossing sign, shared with the flashing-light overlay.
+const LAMP_LEFT = { gx: 3, gy: 5.3 };
+const LAMP_RIGHT = { gx: 6, gy: 5.3 };
+
+const drawCrossbuck = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  drawGrass(ctx, x, y);
+  // Post
+  P(ctx, x, y, 4.5, 3, 1, 6.5, "#6b6f78");
+  P(ctx, x, y, 4.5, 3, 0.3, 6.5, "#8c919b");
+  // Lamp housing (lamps light up when a train is coming)
+  P(ctx, x, y, 2.5, 5, 5, 1.6, "#1f2328");
+  P(ctx, x, y, LAMP_LEFT.gx, LAMP_LEFT.gy, 1, 1, "#4a1d1d");
+  P(ctx, x, y, LAMP_RIGHT.gx, LAMP_RIGHT.gy, 1, 1, "#4a1d1d");
+  // The white X with a red border
+  const cx = x + 5 * PIX;
+  const cy = y + 2.4 * PIX;
+  for (const angle of [Math.PI / 4, -Math.PI / 4]) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    ctx.fillStyle = "#b91c1c";
+    ctx.fillRect(-3.3 * PIX, -0.7 * PIX, 6.6 * PIX, 1.4 * PIX);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(-3 * PIX, -0.42 * PIX, 6 * PIX, 0.84 * PIX);
+    ctx.restore();
+  }
+};
+
+// Drawn every frame on top of a crossbuck tile while a train is near.
+export const drawCrossingLights = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  leftLit: boolean
+) => {
+  const lamp = leftLit ? LAMP_LEFT : LAMP_RIGHT;
+  const lx = x + (lamp.gx + 0.5) * PIX;
+  const ly = y + (lamp.gy + 0.5) * PIX;
+  ctx.fillStyle = "rgba(255, 70, 50, 0.35)";
+  ctx.beginPath();
+  ctx.arc(lx, ly, 2.2 * PIX, 0, Math.PI * 2);
+  ctx.fill();
+  P(ctx, x, y, lamp.gx, lamp.gy, 1, 1, "#ff3b30");
+};
+
+// ============ INDOORS ============
+
+const drawVoid = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  ctx.fillStyle = "#1c1724";
+  ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+};
+
+const drawWallTop = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  ctx.fillStyle = "#3a3346";
+  ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+  P(ctx, x, y, 0, 8.5, 10, 1.5, "#5a5068");
+  P(ctx, x, y, 0, 8.5, 10, 0.4, "#6e6480");
+};
+
+const drawWall = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  ctx.fillStyle = "#e9e0cf";
+  ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+  // Picture rail near the top and a baseboard at the bottom
+  P(ctx, x, y, 0, 1, 10, 0.6, "#cfc3ad");
+  P(ctx, x, y, 0, 8.4, 10, 1.6, "#8a7660");
+  P(ctx, x, y, 0, 8.4, 10, 0.4, "#a8937a");
+};
+
+const drawWallWindow = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  drawWall(ctx, x, y);
+  P(ctx, x, y, 1.5, 2, 7, 5.5, "#5b6170");
+  P(ctx, x, y, 2, 2.5, 6, 4.5, "#9fd0ee");
+  P(ctx, x, y, 2, 2.5, 6, 1, "#d8eef9");
+  P(ctx, x, y, 4.75, 2.5, 0.5, 4.5, "#5b6170");
+  P(ctx, x, y, 1.2, 7.4, 7.6, 0.6, "#c9bea9");
+};
+
+const drawWhiteboard = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  drawWall(ctx, x, y);
+  P(ctx, x, y, 0.8, 2, 8.4, 5.5, "#8d939c");
+  P(ctx, x, y, 1.2, 2.4, 7.6, 4.7, "#f7f8fa");
+  // Scribbles
+  P(ctx, x, y, 2, 3.2, 3, 0.4, "#2563eb");
+  P(ctx, x, y, 2, 4.2, 4.5, 0.4, "#2563eb");
+  P(ctx, x, y, 2, 5.2, 2, 0.4, "#dc2626");
+  P(ctx, x, y, 5.5, 5.2, 2, 0.4, "#2563eb");
+  // Marker tray
+  P(ctx, x, y, 1, 7.4, 8, 0.5, "#6b717a");
+};
+
+const drawNoticeBoard = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  drawWall(ctx, x, y);
+  P(ctx, x, y, 1, 2, 8, 5.5, "#7a5432");
+  P(ctx, x, y, 1.4, 2.4, 7.2, 4.7, "#c9955a");
+  // Posters with pins
+  P(ctx, x, y, 2, 2.9, 2.2, 2.6, "#ffffff");
+  P(ctx, x, y, 4.8, 3.2, 2.4, 1.8, "#fde68a");
+  P(ctx, x, y, 2.6, 5.6, 2.2, 1.2, "#bfdbfe");
+  P(ctx, x, y, 5.4, 5.3, 2.2, 1.5, "#fbcfe8");
+  P(ctx, x, y, 3, 2.8, 0.4, 0.4, "#dc2626");
+  P(ctx, x, y, 5.9, 3.1, 0.4, 0.4, "#2563eb");
+};
+
+const drawInteriorDoor = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  door: string,
+  doorDark: string,
+  windowColor: string
+) => {
+  drawWall(ctx, x, y);
+  P(ctx, x, y, 2, 1, 6, 9, "#5a4632");
+  P(ctx, x, y, 2.5, 1.5, 5, 8.5, door);
+  P(ctx, x, y, 2.5, 1.5, 5, 0.5, shade(door, 20));
+  // Small window in the door
+  P(ctx, x, y, 3.5, 2.5, 3, 2, doorDark);
+  P(ctx, x, y, 3.8, 2.8, 2.4, 1.4, windowColor);
+  // Handle
+  P(ctx, x, y, 6.3, 5.8, 0.6, 0.6, "#e5c158");
+};
+
+const drawStairs = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  ctx.fillStyle = "#8f836e";
+  ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+  // Four steps: light tread, dark riser
+  for (let i = 0; i < 4; i++) {
+    const gy = i * 2.5;
+    P(ctx, x, y, 0, gy, 10, 1.7, "#c2b6a0");
+    P(ctx, x, y, 0, gy + 1.7, 10, 0.8, "#6f6553");
+  }
+  // Handrail
+  P(ctx, x, y, 0, 0, 0.8, 10, "#4a3a2a");
+};
+
+const drawFloor = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  ctx.fillStyle = "#d6d0c2";
+  ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+  P(ctx, x, y, 0, 0, 10, 0.25, "#bfb8a8");
+  P(ctx, x, y, 0, 0, 0.25, 10, "#bfb8a8");
+  P(ctx, x, y, 3, 6, 1, 0.5, "#c9c2b2");
+  P(ctx, x, y, 7, 2, 0.5, 0.5, "#e2ddd1");
+};
+
+const drawRug = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  ctx.fillStyle = "#9e3b3b";
+  ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+  P(ctx, x, y, 1, 2, 1, 1, "#8a3131");
+  P(ctx, x, y, 6, 1, 1, 1, "#b04848");
+  P(ctx, x, y, 4, 6, 1, 1, "#8a3131");
+  P(ctx, x, y, 8, 8, 1, 1, "#b04848");
+};
+
+const drawExitMat = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  drawFloor(ctx, x, y);
+  P(ctx, x, y, 1, 1.5, 8, 7, "#7a6650");
+  P(ctx, x, y, 1.6, 2.1, 6.8, 5.8, "#5b4a3a");
+  // Light spilling in from outside
+  P(ctx, x, y, 2.5, 8.6, 5, 1.4, "#f3e7c4");
+};
+
+const drawPlant = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  drawFloor(ctx, x, y);
+  P(ctx, x, y, 3, 6, 4, 3, "#b5643c");
+  P(ctx, x, y, 2.6, 6, 4.8, 0.8, "#cf7b50");
+  P(ctx, x, y, 2, 1.5, 6, 4.8, "#3f8f3f");
+  P(ctx, x, y, 3, 1, 4, 1, "#3f8f3f");
+  P(ctx, x, y, 3, 2, 2, 2, "#5fb05f");
+  P(ctx, x, y, 6, 3.5, 1.5, 1.5, "#5fb05f");
+};
+
+const drawDesk = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  drawFloor(ctx, x, y);
+  // Desk
+  P(ctx, x, y, 0, 5, 10, 2, "#9a6b45");
+  P(ctx, x, y, 0, 7, 10, 3, "#7d5436");
+  P(ctx, x, y, 0, 5, 10, 0.4, "#b8845a");
+  // Monitor with code on it
+  P(ctx, x, y, 2, 0.5, 6, 4, "#23262e");
+  P(ctx, x, y, 2.5, 1, 5, 3, "#1e3a5f");
+  P(ctx, x, y, 3, 1.5, 2.5, 0.4, "#5ee39a");
+  P(ctx, x, y, 3.5, 2.2, 3, 0.4, "#93c5fd");
+  P(ctx, x, y, 3, 2.9, 2, 0.4, "#5ee39a");
+  P(ctx, x, y, 4.5, 4.5, 1, 0.6, "#3a3d45");
+  // Keyboard
+  P(ctx, x, y, 2.5, 5.6, 5, 1, "#d4d7dd");
+};
+
+const drawCouch = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  drawFloor(ctx, x, y);
+  P(ctx, x, y, 0, 1.5, 10, 4, "#41548a"); // back
+  P(ctx, x, y, 0, 1.5, 10, 0.6, "#5568a0");
+  P(ctx, x, y, 0, 5.5, 10, 3, "#5568a0"); // seat cushion
+  P(ctx, x, y, 0, 5.5, 10, 0.5, "#6a7db5");
+  P(ctx, x, y, 0, 8.5, 10, 1, "#2f3d66");
+  P(ctx, x, y, 9.7, 1.5, 0.3, 7, "#2f3d66"); // seam between cushions
+};
+
+const drawBookshelf = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  drawFloor(ctx, x, y);
+  P(ctx, x, y, 0.5, 0, 9, 10, "#6b4a2e");
+  const books = ["#dc2626", "#2563eb", "#16a34a", "#f59e0b", "#7c3aed", "#0891b2"];
+  for (let shelf = 0; shelf < 3; shelf++) {
+    const gy = 0.6 + shelf * 3.1;
+    P(ctx, x, y, 1, gy, 8, 2.6, "#4a321e");
+    for (let i = 0; i < 5; i++) {
+      const h = 2 + ((i + shelf) % 3) * 0.2;
+      P(ctx, x, y, 1.3 + i * 1.5, gy + 2.6 - h, 1.2, h, books[(i + shelf * 2) % books.length]);
+    }
+    P(ctx, x, y, 0.5, gy + 2.6, 9, 0.5, "#8a6440");
+  }
+};
+
+const drawBench = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  drawFloor(ctx, x, y);
+  P(ctx, x, y, 0, 3, 10, 1.2, "#a0703f");
+  P(ctx, x, y, 0, 4.6, 10, 1.2, "#a0703f");
+  P(ctx, x, y, 0, 3, 10, 0.3, "#bd8a54");
+  P(ctx, x, y, 1, 5.8, 1, 3, "#4a3a2a");
+  P(ctx, x, y, 8, 5.8, 1, 3, "#4a3a2a");
+};
+
 // ============ DISPATCH ============
 
 export const drawTile = (
@@ -324,6 +585,49 @@ export const drawTile = (
       return drawTallGrass(ctx, x, y);
     case "doorStep":
       return drawDoorStep(ctx, x, y);
+    case "sand":
+      return drawPath(ctx, x, y);
+    case "track":
+      return drawTrack(ctx, x, y);
+    case "trackCrossing":
+      return drawTrackCrossing(ctx, x, y);
+    case "crossbuck":
+      return drawCrossbuck(ctx, x, y);
+    case "void":
+      return drawVoid(ctx, x, y);
+    case "wallTop":
+      return drawWallTop(ctx, x, y);
+    case "wall":
+      return drawWall(ctx, x, y);
+    case "wallWindow":
+      return drawWallWindow(ctx, x, y);
+    case "whiteboard":
+      return drawWhiteboard(ctx, x, y);
+    case "noticeBoard":
+      return drawNoticeBoard(ctx, x, y);
+    case "doorLocked":
+      return drawInteriorDoor(ctx, x, y, "#8a6a4a", "#3a2c1e", "#4b5563");
+    case "doorCSC":
+      // Lit window: this is the one door that's open
+      return drawInteriorDoor(ctx, x, y, "#3f6fb0", "#1e3a66", "#ffe9a8");
+    case "stairs":
+      return drawStairs(ctx, x, y);
+    case "floor":
+      return drawFloor(ctx, x, y);
+    case "rug":
+      return drawRug(ctx, x, y);
+    case "exitMat":
+      return drawExitMat(ctx, x, y);
+    case "plant":
+      return drawPlant(ctx, x, y);
+    case "desk":
+      return drawDesk(ctx, x, y);
+    case "couch":
+      return drawCouch(ctx, x, y);
+    case "bookshelf":
+      return drawBookshelf(ctx, x, y);
+    case "bench":
+      return drawBench(ctx, x, y);
     case "buildingRoofTop":
     case "buildingRoofBase":
     case "buildingWall":
@@ -984,7 +1288,310 @@ export const drawPokemon = (
       Q(2, 8, 1, 1, primary);
       Q(7, 8, 1, 1, primary);
       break;
+    case "goose":
+      drawGoose(ctx, x, y, size, species);
+      break;
+    case "codey":
+      drawCodey(ctx, x, y, size, species);
+      break;
   }
+};
+
+// The newer mascots use a 20x20 grid so small details (glasses, chinstrap) read.
+const grid20 = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number) => {
+  const q = size / 20;
+  const R = (gx: number, gy: number, w: number, h: number, c: string) => {
+    ctx.fillStyle = c;
+    ctx.fillRect(x + gx * q, y + gy * q, w * q, h * q);
+  };
+  return { q, R };
+};
+
+// Canada goose, the unofficial mascot of UW, facing left.
+function drawGoose(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  species: PokemonSpecies
+) {
+  const { R } = grid20(ctx, x, y, size);
+  const body = species.primary;
+  const black = species.secondary;
+  const wing = shade(body, -28);
+  const wingLine = shade(body, -48);
+  const breast = "#ddd2bf";
+
+  // Legs and feet
+  R(10, 15, 1, 2.6, "#2b2b2b");
+  R(13, 15, 1, 2.6, "#2b2b2b");
+  R(8.6, 17.4, 2.6, 0.8, "#2b2b2b");
+  R(11.6, 17.4, 2.6, 0.8, "#2b2b2b");
+
+  // Body
+  R(8, 10, 9, 1, body);
+  R(7, 11, 11, 3, body);
+  R(8, 14, 9, 1, body);
+  // Pale breast at the front
+  R(7, 11, 3, 3, breast);
+  R(8, 10, 2, 1, breast);
+  R(8, 14, 2, 1, breast);
+  // Folded wing with feather lines
+  R(10, 10.5, 7, 2.6, wing);
+  R(11, 11.4, 5, 0.4, wingLine);
+  R(12, 12.4, 4.5, 0.4, wingLine);
+  // White under the tail, black tail tip
+  R(15, 13.4, 3, 1.4, "#f2f2f2");
+  R(17, 10.6, 2, 1.6, black);
+
+  // Long black neck and head
+  R(6, 4.5, 2, 7, black);
+  R(4, 1.6, 3, 0.6, black);
+  R(3, 2.2, 5, 2.8, black);
+  // White chinstrap
+  R(4.6, 3.6, 3, 1.4, "#ffffff");
+  // Beak
+  R(1, 3, 2.2, 1, "#2b2b2b");
+  // Eye glint
+  R(4.3, 2.7, 0.6, 0.6, "#ffffff");
+}
+
+// Codey, the CSC mascot: light blue, white muzzle and chest, round navy glasses.
+function drawCodey(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  species: PokemonSpecies
+) {
+  const { q, R } = grid20(ctx, x, y, size);
+  const blue = species.primary;
+  const blueDark = shade(blue, -30);
+  const blueLight = shade(blue, 30);
+  const navy = species.secondary;
+  const white = "#ffffff";
+
+  const circle = (cx: number, cy: number, r: number, fill: string) => {
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    ctx.arc(x + cx * q, y + cy * q, r * q, 0, Math.PI * 2);
+    ctx.fill();
+  };
+
+  // Round tail behind the body
+  circle(16, 14, 3.6, blue);
+  circle(15.4, 13.2, 1.5, blueLight);
+
+  // Body, with a white chest and front paws
+  R(5, 12, 10, 6, blue);
+  R(13, 12, 2, 6, blueDark);
+  R(8, 12, 4, 5.5, white);
+  R(6.4, 17.4, 2.2, 1, blueDark);
+  R(11.4, 17.4, 2.2, 1, blueDark);
+
+  // Ears (white on the inner side)
+  R(5, 2, 1.5, 1, blue);
+  R(4.5, 3, 2.5, 1, blue);
+  R(4, 4, 3.5, 1.5, blue);
+  R(5.1, 3.2, 1, 1, white);
+  R(5, 4, 1.6, 1.3, white);
+  R(13.5, 2, 1.5, 1, blue);
+  R(13, 3, 2.5, 1, blue);
+  R(12.5, 4, 3.5, 1.5, blue);
+  R(13.9, 3.2, 1, 1, white);
+  R(13.4, 4, 1.6, 1.3, white);
+
+  // Head
+  R(5, 5, 10, 1, blue);
+  R(4, 6, 12, 5, blue);
+  R(5, 11, 10, 1, blue);
+  R(6, 6, 2, 0.8, blueLight);
+  // White muzzle, joining the chest
+  R(8, 8.8, 4, 0.6, white);
+  R(7.4, 9.4, 5.2, 2.6, white);
+
+  // Eyes, with the little white marks above them
+  R(6.8, 8, 1.2, 1.4, navy);
+  R(12, 8, 1.2, 1.4, navy);
+  R(7, 8.2, 0.4, 0.4, white);
+  R(12.2, 8.2, 0.4, 0.4, white);
+  R(6.6, 6.8, 1.4, 0.5, white);
+  R(11.8, 6.8, 1.4, 0.5, white);
+
+  // Nose and smile
+  R(9.4, 9.8, 1.2, 0.8, navy);
+  ctx.save();
+  ctx.strokeStyle = navy;
+  ctx.lineCap = "round";
+  ctx.lineWidth = Math.max(1, 0.45 * q);
+  ctx.beginPath();
+  ctx.arc(x + 10 * q, y + 10.4 * q, 1.3 * q, 0.2 * Math.PI, 0.8 * Math.PI);
+  ctx.stroke();
+
+  // Big round glasses
+  ctx.lineWidth = Math.max(1, 0.55 * q);
+  for (const cx of [7.4, 12.6]) {
+    ctx.beginPath();
+    ctx.arc(x + cx * q, y + 8.7 * q, 2.4 * q, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.moveTo(x + 9.8 * q, y + 8.4 * q);
+  ctx.lineTo(x + 10.2 * q, y + 8.4 * q);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ============ ION TRAIN ============
+// A two-car light rail train in a white-and-blue livery, drawn side-on across
+// `lengthTiles` tiles of a track row. (px, py) is the top-left of the first tile.
+
+const roundedRectPath = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number
+) => {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+};
+
+export const drawTrain = (
+  ctx: CanvasRenderingContext2D,
+  px: number,
+  py: number,
+  lengthTiles: number,
+  dir: 1 | -1
+) => {
+  const T = TILE_SIZE;
+  const carGap = 0.14 * T;
+  const carW = (lengthTiles * T - carGap) / 2;
+  const top = py - 0.35 * T;
+  const bodyH = 1.1 * T;
+
+  ctx.save();
+  // Shadow on the ballast
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  ctx.fillRect(px + 4, py + 0.8 * T, lengthTiles * T - 8, 0.2 * T);
+
+  // Bellows between the two cars
+  ctx.fillStyle = "#2a2e35";
+  ctx.fillRect(px + carW - 2, top + 0.25 * T, carGap + 4, 0.65 * T);
+
+  for (let car = 0; car < 2; car++) {
+    const cx = px + car * (carW + carGap);
+    const isFront = dir === 1 ? car === 1 : car === 0;
+    const isRear = dir === 1 ? car === 0 : car === 1;
+
+    // Undercarriage and wheels
+    ctx.fillStyle = "#3a3f47";
+    ctx.fillRect(cx + 0.15 * T, top + bodyH - 0.12 * T, carW - 0.3 * T, 0.22 * T);
+    ctx.fillStyle = "#22252b";
+    for (const wx of [0.45, carW / T - 0.45]) {
+      ctx.beginPath();
+      ctx.arc(cx + wx * T, top + bodyH + 0.08 * T, 0.13 * T, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Body
+    roundedRectPath(ctx, cx, top, carW, bodyH, 0.22 * T);
+    ctx.fillStyle = "#f4f6f8";
+    ctx.fill();
+    ctx.strokeStyle = "#9aa3ad";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Roof line
+    ctx.fillStyle = "#cfd5dc";
+    ctx.fillRect(cx + 0.18 * T, top + 0.02 * T, carW - 0.36 * T, 0.12 * T);
+
+    // Window band
+    const winTop = top + 0.22 * T;
+    const winH = 0.32 * T;
+    ctx.fillStyle = "#1f2a3a";
+    ctx.fillRect(cx + 0.12 * T, winTop, carW - 0.24 * T, winH);
+    ctx.fillStyle = "#3b4c66";
+    ctx.fillRect(cx + 0.12 * T, winTop, carW - 0.24 * T, winH * 0.35);
+    // Window pillars
+    ctx.fillStyle = "#f4f6f8";
+    for (let wx = cx + 0.7 * T; wx < cx + carW - 0.5 * T; wx += 0.62 * T) {
+      ctx.fillRect(wx, winTop, 0.07 * T, winH);
+    }
+
+    // Blue livery stripe
+    ctx.fillStyle = "#0b4f9c";
+    ctx.fillRect(cx + 0.05 * T, top + 0.62 * T, carW - 0.1 * T, 0.12 * T);
+    ctx.fillStyle = "#5fb3e8";
+    ctx.fillRect(cx + 0.05 * T, top + 0.74 * T, carW - 0.1 * T, 0.05 * T);
+
+    // Doors
+    ctx.strokeStyle = "#aeb6c0";
+    ctx.lineWidth = 1;
+    for (const dx of [carW * 0.3, carW * 0.65]) {
+      ctx.strokeRect(cx + dx, top + 0.18 * T, 0.42 * T, 0.82 * T);
+      ctx.beginPath();
+      ctx.moveTo(cx + dx + 0.21 * T, top + 0.18 * T);
+      ctx.lineTo(cx + dx + 0.21 * T, top + 1.0 * T);
+      ctx.stroke();
+    }
+
+    // "ION" lettering
+    ctx.fillStyle = "#0b4f9c";
+    ctx.font = `bold ${Math.round(0.24 * T)}px monospace`;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText("ION", cx + 0.3 * T, top + 0.98 * T);
+
+    // Cab windshields at the outer ends (the train can drive either way)
+    if (isFront || isRear) {
+      const endX = isFront === (dir === 1) ? cx + carW - 0.34 * T : cx + 0.06 * T;
+      ctx.fillStyle = "#14202e";
+      ctx.fillRect(endX, top + 0.16 * T, 0.28 * T, 0.42 * T);
+      // Headlight at the front, tail light at the back
+      ctx.fillStyle = isFront ? "#ffe680" : "#ff4d4d";
+      const lightX = isFront === (dir === 1) ? cx + carW - 0.16 * T : cx + 0.06 * T;
+      ctx.fillRect(lightX, top + 0.84 * T, 0.1 * T, 0.08 * T);
+    }
+  }
+  ctx.restore();
+};
+
+// ============ MAP LABEL ============
+// A small plate drawn over the top edge of tile (tx, ty), e.g. above the CSC door.
+
+export const drawMapLabel = (
+  ctx: CanvasRenderingContext2D,
+  tx: number,
+  ty: number,
+  text: string,
+  accent: string,
+  camPxX: number,
+  camPxY: number
+) => {
+  const cx = (tx + 0.5) * TILE_SIZE - camPxX;
+  const baseline = ty * TILE_SIZE - camPxY + 6;
+  ctx.font = "bold 11px monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  const w = ctx.measureText(text).width;
+  ctx.fillStyle = "rgba(15,23,42,0.9)";
+  ctx.fillRect(cx - w / 2 - 5, baseline - 13, w + 10, 15);
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(cx - w / 2 - 5, baseline - 13, w + 10, 15);
+  ctx.fillStyle = "#f8fafc";
+  ctx.fillText(text, cx, baseline);
 };
 
 // ============ BUILDING LABEL ============
