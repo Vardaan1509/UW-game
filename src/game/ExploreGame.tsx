@@ -109,6 +109,8 @@ const ExploreGame = () => {
   const [fainted, setFainted] = useState(false);
   const [repellentExpires, setRepellentExpires] = useState<number | null>(null);
   const [showNamePrompt, setShowNamePrompt] = useState(false);
+  // null until the player enters a name on the opening screen.
+  const [playerName, setPlayerName] = useState<string | null>(null);
   const [customNPCs, setCustomNPCs] = useState<CustomNPC[]>([]);
   const [legendaryReviewed, setLegendaryReviewed] = useState(false);
   const [isTouch, setIsTouch] = useState(false);
@@ -146,6 +148,8 @@ const ExploreGame = () => {
   legendaryReviewedRef.current = legendaryReviewed;
   const showNamePromptRef = useRef(false);
   showNamePromptRef.current = showNamePrompt;
+  const playerNameRef = useRef<string | null>(null);
+  playerNameRef.current = playerName;
 
   // Detect touch-capable devices to show on-screen controls.
   useEffect(() => {
@@ -184,10 +188,10 @@ const ExploreGame = () => {
   // controls unmount before their pointer-up fires. Clear any held keys so the
   // player doesn't keep walking after returning to the map.
   useEffect(() => {
-    if (battle || showNamePrompt) {
+    if (battle || showNamePrompt || playerName === null) {
       keysRef.current.clear();
     }
-  }, [battle, showNamePrompt]);
+  }, [battle, showNamePrompt, playerName]);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -461,7 +465,13 @@ const ExploreGame = () => {
         e.preventDefault();
       }
       keysRef.current.add(k);
-      if (battleRef.current || faintedRef.current || showNamePromptRef.current) return;
+      if (
+        battleRef.current ||
+        faintedRef.current ||
+        showNamePromptRef.current ||
+        playerNameRef.current === null
+      )
+        return;
       if (k === " " || k === "e" || k === "enter") interact();
     };
     const up = (e: KeyboardEvent) => {
@@ -572,7 +582,8 @@ const ExploreGame = () => {
         !!dialogueRef.current ||
         !!battleRef.current ||
         faintedRef.current ||
-        showNamePromptRef.current;
+        showNamePromptRef.current ||
+        playerNameRef.current === null;
 
       if (!p.moving && !blocked) {
         const keys = keysRef.current;
@@ -713,16 +724,7 @@ const ExploreGame = () => {
           c.outfit
         );
         // Name floating above
-        ctx.font = "bold 10px monospace";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "bottom";
-        const nameText = c.name;
-        const w = ctx.measureText(nameText).width;
-        const nameY = npy - 4;
-        ctx.fillStyle = "rgba(15,23,42,0.85)";
-        ctx.fillRect(npx + TILE_SIZE / 2 - w / 2 - 4, nameY - 12, w + 8, 14);
-        ctx.fillStyle = "#facc15";
-        ctx.fillText(nameText, npx + TILE_SIZE / 2, nameY);
+        drawNameLabel(ctx, npx + TILE_SIZE / 2, npy - 4, c.name, "#facc15");
 
         // Occasional "Hi!" bubble when player is near
         const dxp = c.tileX - p.tileX;
@@ -766,6 +768,16 @@ const ExploreGame = () => {
         null,
         "trainer"
       );
+      // Player's name above their head (white, so it stands out from NPC labels)
+      if (playerNameRef.current) {
+        drawNameLabel(
+          ctx,
+          playerPx + TILE_SIZE / 2,
+          playerPy - 4,
+          playerNameRef.current,
+          "#ffffff"
+        );
+      }
 
       raf = requestAnimationFrame(loop);
     };
@@ -909,11 +921,28 @@ const ExploreGame = () => {
         />
       )}
 
-      {showNamePrompt && <NamePromptModal onSubmit={handleNameSubmit} />}
+      {/* Opening screen: ask for the player's name before anything else. */}
+      {playerName === null && (
+        <NamePromptModal
+          eyebrow="Welcome, trainer"
+          title="What's your name?"
+          footer="Your name will appear above your character."
+          buttonLabel="Start"
+          onSubmit={(name) => {
+            setPlayerName(name);
+            sounds.select();
+            showToast(`Welcome, ${name}!`);
+          }}
+        />
+      )}
+
+      {showNamePrompt && (
+        <NamePromptModal onSubmit={handleNameSubmit} initialValue={playerName ?? ""} />
+      )}
 
       {/* On-screen controls for touch devices. Hidden during battle, name entry,
           and dialogue (those have their own UI; tap the dialogue box to advance). */}
-      {isTouch && !battle && !showNamePrompt && !dialogue && (
+      {isTouch && playerName !== null && !battle && !showNamePrompt && !dialogue && (
         <TouchControls
           onPress={pressDir}
           onRelease={releaseDir}
@@ -943,6 +972,24 @@ const drawHint = (
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText("!", cx, cy + bob + 1);
+};
+
+// Small dark pill with a name in it, centered horizontally on cx, bottom at baseY.
+const drawNameLabel = (
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  baseY: number,
+  text: string,
+  color: string
+) => {
+  ctx.font = "bold 10px monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  const w = ctx.measureText(text).width;
+  ctx.fillStyle = "rgba(15,23,42,0.85)";
+  ctx.fillRect(cx - w / 2 - 4, baseY - 12, w + 8, 14);
+  ctx.fillStyle = color;
+  ctx.fillText(text, cx, baseY);
 };
 
 const drawSpeechBubble = (
