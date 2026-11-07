@@ -197,6 +197,11 @@ class SoundEngine {
     }
   }
 
+  // A Pokemon grew a level: quick rising run
+  levelUp() {
+    [784, 988, 1175, 1568].forEach((n, i) => this.beep(n, 70, "square", 0.045, i * 0.06));
+  }
+
   // Walking through a door
   door() {
     this.beep(520, 50, "square", 0.04);

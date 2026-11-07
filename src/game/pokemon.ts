@@ -19,6 +19,9 @@ export interface PokemonSpecies {
   shape: "blob" | "bug" | "sparky" | "aqua" | "brick" | "leaf" | "goose" | "codey";
   // Used to color the pokemon frame; overrides shape color when set.
   isLegendary?: boolean;
+  // Only obtainable as a gift, so it can't grow by stacking duplicates.
+  // These get a better chance to level up after a win.
+  giftOnly?: boolean;
 }
 
 export interface Pokemon {
@@ -36,6 +39,7 @@ export const SPECIES: Record<string, PokemonSpecies> = {
     primary: "#8a7a66", // Canada goose brown-grey body
     secondary: "#1a1a1a", // black head and neck
     shape: "goose",
+    giftOnly: true,
   },
   codey: {
     id: "codey",
@@ -44,6 +48,7 @@ export const SPECIES: Record<string, PokemonSpecies> = {
     primary: "#5aaff5", // CSC mascot blue
     secondary: "#26285e", // navy glasses and eyes
     shape: "codey",
+    giftOnly: true,
   },
 
   // Starters offered by Prof. Chen (no longer given out; kept for the next pass)
@@ -239,7 +244,7 @@ export const TYPE_ADVANTAGE: Record<PokemonType, PokemonType[]> = {
 };
 
 const TYPE_BOOST = 5;
-const LEGENDARY_BOOST = 10;
+const LEGENDARY_BOOST = 7;
 
 const prettyType = (t: PokemonType): string =>
   t.charAt(0).toUpperCase() + t.slice(1);
@@ -288,13 +293,30 @@ export const resolveBattle = (
   return { outcome, advantage, explanation, yourEffective, wildEffective };
 };
 
+// ============ LEVELING UP ============
+// After a win, every Pokemon that fought (including ones that fainted before
+// the last one won) gets one roll to gain a level.
+export const MAX_LEVEL = 99;
+export const LEVEL_UP_CHANCE = 1 / 4;
+export const GIFT_ONLY_LEVEL_UP_CHANCE = 1 / 2;
+
+export const levelUpChance = (p: Pokemon): number =>
+  p.species.giftOnly ? GIFT_ONLY_LEVEL_UP_CHANCE : LEVEL_UP_CHANCE;
+
+// Returns the participants that level up. `random` is injectable for testing.
+export const rollLevelUps = (
+  participants: Pokemon[],
+  random: () => number = Math.random
+): Pokemon[] =>
+  participants.filter((p) => p.level < MAX_LEVEL && random() < levelUpChance(p));
+
 // Adds a caught pokemon to the team. If a same-species pokemon already exists,
 // their levels stack (up to a soft cap of 99 so numbers stay readable).
 export const addToTeam = (team: Pokemon[], caught: Pokemon): Pokemon[] => {
   const existingIdx = team.findIndex((p) => p.species.id === caught.species.id);
   if (existingIdx === -1) return [...team, caught];
   return team.map((p, i) =>
-    i === existingIdx ? { ...p, level: Math.min(99, p.level + caught.level) } : p
+    i === existingIdx ? { ...p, level: Math.min(MAX_LEVEL, p.level + caught.level) } : p
   );
 };
 

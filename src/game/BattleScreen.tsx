@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Pokemon, resolveBattle } from "./pokemon";
+import { Pokemon, resolveBattle, rollLevelUps, MAX_LEVEL } from "./pokemon";
 import { drawPokemon } from "./sprites";
 import { sounds } from "./sounds";
 
@@ -7,8 +7,13 @@ interface BattleScreenProps {
   team: Pokemon[];
   wild: Pokemon; // the opponent's Pokemon (wild, or a trainer's)
   trainerName?: string; // set for trainer battles: you win, but don't catch it
-  onEnd: (result: "win" | "lose") => void;
+  // leveledUp: uids of your Pokemon that gained a level (only on a win)
+  onEnd: (result: "win" | "lose", leveledUp: string[]) => void;
 }
+
+const LEVEL_UP_FIRST_MS = 2000; // first level-up message, after the victory line
+const LEVEL_UP_GAP_MS = 1300; // between level-up messages
+const END_AFTER_WIN_MS = 2400;
 
 type Phase = "select" | "intro" | "attack" | "faint" | "sendNext" | "victory" | "defeat";
 
@@ -105,7 +110,18 @@ const BattleScreen = ({ team, wild, trainerName, onEnd }: BattleScreenProps) => 
           );
           sounds.victory();
           if (!trainerName) setTimeout(() => sounds.catchSound(), 700);
-          setTimeout(() => onEnd("win"), 2400);
+          // Everyone who fought this battle (fainted or not) rolls to level up.
+          const leveled = rollLevelUps(selected.slice(0, idx + 1));
+          leveled.forEach((p, i) => {
+            setTimeout(() => {
+              setMessage(`${p.species.name} grew to Lv ${Math.min(MAX_LEVEL, p.level + 1)}!`);
+              sounds.levelUp();
+            }, LEVEL_UP_FIRST_MS + i * LEVEL_UP_GAP_MS);
+          });
+          setTimeout(
+            () => onEnd("win", leveled.map((p) => p.uid)),
+            END_AFTER_WIN_MS + leveled.length * LEVEL_UP_GAP_MS
+          );
         } else {
           setPhase("faint");
           setActiveFainted(true);
@@ -125,7 +141,7 @@ const BattleScreen = ({ team, wild, trainerName, onEnd }: BattleScreenProps) => 
                   : `You have no more Pokemon! You lost!`
               );
               sounds.defeat();
-              setTimeout(() => onEnd("lose"), 1800);
+              setTimeout(() => onEnd("lose", []), 1800);
             }
           }, 1200);
         }

@@ -30,6 +30,7 @@ import {
   rollWildEncounter,
   addToTeam,
   hasLegendary,
+  MAX_LEVEL,
   SPECIES,
   type Pokemon,
 } from "./pokemon";
@@ -1121,7 +1122,15 @@ const ExploreGame = () => {
   }, [tryMove, onStepComplete, updateTrains, updateNPCs, updateCustomNPCs]);
 
   const handleBattleEnd = useCallback(
-    (r: "win" | "lose") => {
+    (r: "win" | "lose", leveledUp: string[]) => {
+      // Level-ups were rolled and announced on the battle screen; apply them first.
+      const leveled = new Set(leveledUp);
+      const levelAfter = (p: Pokemon) =>
+        leveled.has(p.uid) ? Math.min(MAX_LEVEL, p.level + 1) : p.level;
+      if (leveled.size > 0) {
+        setTeam((prev) => prev.map((p) => (leveled.has(p.uid) ? { ...p, level: levelAfter(p) } : p)));
+      }
+
       // Trainer battle: no catching. Win a Repel Spray; losing just means a
       // rematch later (you stay where you are).
       if (battle?.trainer?.trainer) {
@@ -1152,7 +1161,7 @@ const ExploreGame = () => {
         const legendaryNote = battle.wild.species.isLegendary ? " It's a legendary!" : "";
         showToast(
           existing
-            ? `Caught another ${name}! Your ${name} is now Lv ${Math.min(99, existing.level + battle.wild.level)}.${legendaryNote}`
+            ? `Caught another ${name}! Your ${name} is now Lv ${Math.min(MAX_LEVEL, levelAfter(existing) + battle.wild.level)}.${legendaryNote}`
             : `Caught ${name} (Lv ${battle.wild.level})!${legendaryNote}`
         );
       } else if (r === "lose") {

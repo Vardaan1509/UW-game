@@ -260,6 +260,7 @@ const storyNPCs: NPC[] = [
       "The tall grass south of here is full of wild Pokemon. Walk through it and you'll run into them.",
       "Battles come down to level and type. Water beats fire, fire beats grass, grass beats water. Win and you catch the wild one.",
       "Catch one you already have and their levels stack, so duplicates make your team stronger.",
+      "Every Pokemon that fights in a battle you win might also gain a level.",
       "Never walk into the grass without a Pokemon, though. You'll faint and end up back here.",
       "Trainers around campus will battle you. Beat them and they'll give you a Repel Spray.",
       "North of E7 are the ION tracks. Only cross at the crossings, and wait if a train's coming.",
