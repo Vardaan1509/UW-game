@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { ArrowLeft, Keyboard, Volume2, VolumeX } from "lucide-react";
+import { Keyboard, Volume2, VolumeX } from "lucide-react";
 import {
   TILE_SIZE,
   MAP_WIDTH,
@@ -48,8 +48,6 @@ const DIRS: Record<Direction, { dx: number; dy: number }> = {
 const MOVE_MS = 160;
 const CUSTOM_NPC_MOVE_MS = 260;
 const RESUME_URL = "/Vardaan_Resume.pdf";
-// Standalone app: there's no router, so "Back to portfolio" links to the live site.
-const PORTFOLIO_URL = "https://vardaan.uwce.ca";
 const ENCOUNTER_CHANCE = 0.28;
 const REPELLENT_MS = 30_000;
 const CUSTOM_NPC_SPAWN = { x: 18, y: 12 };
@@ -860,14 +858,6 @@ const ExploreGame = () => {
   return (
     <div className="fixed inset-0 bg-slate-950 overflow-hidden select-none">
       <canvas ref={canvasRef} className="block w-full h-full" />
-
-      <a
-        href={PORTFOLIO_URL}
-        className="absolute top-4 left-4 z-10 inline-flex items-center gap-2 px-3 py-2 bg-slate-900/80 hover:bg-slate-800 text-white text-sm rounded-lg border border-slate-700 backdrop-blur-sm transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Back to portfolio
-      </a>
 
       <button
         onClick={toggleMute}
