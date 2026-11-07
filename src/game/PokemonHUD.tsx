@@ -6,10 +6,18 @@ import { ChevronDown, ChevronUp, ShieldAlert, X } from "lucide-react";
 interface PokemonHUDProps {
   team: Pokemon[];
   repellentExpires: number | null;
+  repels: number; // Repel Sprays in the bag (won from trainers)
+  onUseRepel: () => void;
   onTradeForRepellent: (pokemon: Pokemon) => void;
 }
 
-const PokemonHUD = ({ team, repellentExpires, onTradeForRepellent }: PokemonHUDProps) => {
+const PokemonHUD = ({
+  team,
+  repellentExpires,
+  repels,
+  onUseRepel,
+  onTradeForRepellent,
+}: PokemonHUDProps) => {
   const [open, setOpen] = useState(true);
   const [showTrade, setShowTrade] = useState(false);
   const [now, setNow] = useState(Date.now());
@@ -78,6 +86,19 @@ const PokemonHUD = ({ team, repellentExpires, onTradeForRepellent }: PokemonHUDP
               </div>
             )}
           </>
+        )}
+        {repels > 0 && (
+          <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-slate-700">
+            <span className="text-slate-200 text-xs font-mono">
+              Repel Spray <span className="text-emerald-300">x{repels}</span>
+            </span>
+            <button
+              onClick={onUseRepel}
+              className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-emerald-700 hover:bg-emerald-600 text-white rounded transition-colors"
+            >
+              Use
+            </button>
+          </div>
         )}
       </div>
 

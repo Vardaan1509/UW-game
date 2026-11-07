@@ -24,7 +24,7 @@ import {
   drawCrossingLights,
   type OutfitStyle,
 } from "./sprites";
-import { npcsOnMap, type NPC } from "./npcs";
+import { npcs, npcsOnMap, type NPC } from "./npcs";
 import {
   makePokemon,
   rollWildEncounter,
@@ -38,10 +38,6 @@ import BattleScreen from "./BattleScreen";
 import PokemonHUD from "./PokemonHUD";
 import NamePromptModal from "./NamePromptModal";
 import TouchControls, { type TouchDir } from "./TouchControls";
-
-const NPC_OUTFITS: Record<string, OutfitStyle> = {
-  vardaan: "trainer",
-};
 
 const DIRS: Record<Direction, { dx: number; dy: number }> = {
   0: { dx: 0, dy: 1 },
@@ -59,6 +55,65 @@ const CUSTOM_NPC_SPAWN = { x: 18, y: 12 };
 const FADE_MS = 200;
 const TOAST_MS = 2400;
 const BUMP_COOLDOWN_MS = 1200;
+
+// ============ NPC MOVEMENT ============
+
+const NPC_MOVE_MS = 300; // NPCs stroll a bit slower than the player
+const NPC_PAUSE_MIN_MS = 1200;
+const NPC_PAUSE_MAX_MS = 3800;
+const NPC_LOOK_AROUND_CHANCE = 0.3; // sometimes they just turn instead of stepping
+const NPC_TALK_PAUSE_MS = 2500; // stay put for a moment after talking to you
+
+interface NPCState {
+  tileX: number;
+  tileY: number;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  moveStart: number;
+  moving: boolean;
+  facing: Direction;
+  walkFrame: number;
+  nextMoveAt: number;
+}
+
+const createNPCStates = (now: number): Record<string, NPCState> =>
+  Object.fromEntries(
+    npcs.map((n) => [
+      n.id,
+      {
+        tileX: n.x,
+        tileY: n.y,
+        fromX: n.x,
+        fromY: n.y,
+        toX: n.x,
+        toY: n.y,
+        moveStart: 0,
+        moving: false,
+        facing: n.facing ?? 0,
+        walkFrame: 0,
+        nextMoveAt: now + 1000 + Math.random() * 3000,
+      },
+    ])
+  );
+
+// Tiles next to a door or exit. Wanderers keep off them so they never block one.
+const WARP_FRONTS = Object.fromEntries(
+  Object.values(MAPS).map((m) => [
+    m.id,
+    new Set(
+      m.warps.flatMap((w) =>
+        [
+          [w.x + 1, w.y],
+          [w.x - 1, w.y],
+          [w.x, w.y + 1],
+          [w.x, w.y - 1],
+        ].map(([x, y]) => `${x},${y}`)
+      )
+    ),
+  ])
+) as Record<MapId, Set<string>>;
 
 // ============ ION TRAINS ============
 
@@ -143,7 +198,11 @@ const ExploreGame = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [dialogue, setDialogue] = useState<DialogueState | null>(null);
   const [team, setTeam] = useState<Pokemon[]>([]);
-  const [battle, setBattle] = useState<{ team: Pokemon[]; wild: Pokemon } | null>(null);
+  // `trainer` is set for trainer battles; otherwise it's a wild encounter.
+  const [battle, setBattle] = useState<{ team: Pokemon[]; wild: Pokemon; trainer?: NPC } | null>(
+    null
+  );
+  const [repels, setRepels] = useState(0);
   const [muted, setMuted] = useState(() => sounds.isMuted());
   const [toast, setToast] = useState<string | null>(null);
   const [fainted, setFainted] = useState(false);
@@ -158,7 +217,11 @@ const ExploreGame = () => {
 
   const talkedTo = useRef<Set<string>>(new Set());
   const giftGiven = useRef<Set<string>>(new Set());
-  const npcFacing = useRef<Record<string, Direction>>({});
+  const defeatedTrainers = useRef<Set<string>>(new Set());
+  const npcStateRef = useRef<Record<string, NPCState> | null>(null);
+  if (npcStateRef.current === null) npcStateRef.current = createNPCStates(performance.now());
+  const repelsRef = useRef(0);
+  repelsRef.current = repels;
 
   const playerRef = useRef({
     tileX: SPAWN.x,
@@ -298,11 +361,15 @@ const ExploreGame = () => {
     [placePlayer, showToast]
   );
 
-  // NPCs on the current map, minus any that have joined your team.
+  // The NPC standing on (x, y), using their live position. A walking NPC
+  // occupies both the tile they're leaving and the tile they're heading to.
+  // NPCs that joined your team are skipped.
   const npcAt = useCallback((x: number, y: number, mapId: MapId = mapIdRef.current) => {
-    return npcsOnMap(mapId).find(
-      (n) => n.x === x && n.y === y && !(n.hideAfterGift && giftGiven.current.has(n.id))
-    );
+    return npcsOnMap(mapId).find((n) => {
+      if (n.hideAfterGift && giftGiven.current.has(n.id)) return false;
+      const s = npcStateRef.current![n.id];
+      return (s.tileX === x && s.tileY === y) || (s.moving && s.fromX === x && s.fromY === y);
+    });
   }, []);
 
   const findCustomNPCAt = useCallback((x: number, y: number): CustomNPC | undefined => {
@@ -437,6 +504,27 @@ const ExploreGame = () => {
       if (!state || !state.npc.choice) return;
       const option = state.npc.choice.options[optionIndex];
       sounds.select();
+      if (option.action === "battle" && state.npc.trainer) {
+        if (teamRef.current.length === 0) {
+          setDialogue({
+            ...state,
+            line: 0,
+            extraLines: ["You don't have any Pokemon yet! Talk to Vardaan outside E7 first."],
+            choiceShown: false,
+            isRepeat: false,
+          });
+          return;
+        }
+        talkedTo.current.add(state.npc.id);
+        setDialogue(null);
+        sounds.encounter();
+        setBattle({
+          team: teamRef.current,
+          wild: makePokemon(state.npc.trainer.pokemonId, state.npc.trainer.level),
+          trainer: state.npc,
+        });
+        return;
+      }
       if (option.action === "givePokemon" && option.pokemonId) {
         const npc = state.npc;
         if (!giftGiven.current.has(npc.id)) {
@@ -501,7 +589,23 @@ const ExploreGame = () => {
     const npc = npcAt(nx, ny);
     if (npc) {
       sounds.talk();
-      npcFacing.current[npc.id] = OPPOSITE[p.facing];
+      // Turn to face the player, and don't wander off mid-conversation.
+      const s = npcStateRef.current![npc.id];
+      s.facing = OPPOSITE[p.facing];
+      s.nextMoveAt = performance.now() + NPC_TALK_PAUSE_MS;
+      // Trainers you've already beaten just chat.
+      if (npc.trainer && defeatedTrainers.current.has(npc.id)) {
+        setDialogue({
+          npc,
+          line: 0,
+          extraLines: npc.trainer.defeatedLines,
+          choiceShown: false,
+          finished: false,
+          isRepeat: false,
+          openedAt: performance.now(),
+        });
+        return;
+      }
       // Legendary review: an NPC with legendaryReview lines reacts once you've
       // met them and brought a legendary. No NPC uses this in the current map.
       if (
@@ -642,6 +746,59 @@ const ExploreGame = () => {
     }
   }, []);
 
+  // Students with a wander area stroll around it. Steps already in progress
+  // always finish; new steps only start when the game isn't paused.
+  const updateNPCs = useCallback(
+    (now: number, allowNewMoves: boolean) => {
+      const mapId = mapIdRef.current;
+      const map = MAPS[mapId];
+      const p = playerRef.current;
+      for (const n of npcsOnMap(mapId)) {
+        const area = n.wander;
+        if (!area) continue;
+        const s = npcStateRef.current![n.id];
+        if (s.moving) {
+          if (now - s.moveStart >= NPC_MOVE_MS) {
+            s.moving = false;
+            s.fromX = s.toX;
+            s.fromY = s.toY;
+          }
+          continue;
+        }
+        if (!allowNewMoves || now < s.nextMoveAt) continue;
+        s.nextMoveAt = now + NPC_PAUSE_MIN_MS + Math.random() * (NPC_PAUSE_MAX_MS - NPC_PAUSE_MIN_MS);
+        const dir = Math.floor(Math.random() * 4) as Direction;
+        s.facing = dir;
+        if (Math.random() < NPC_LOOK_AROUND_CHANCE) continue;
+
+        const { dx, dy } = DIRS[dir];
+        const nx = s.tileX + dx;
+        const ny = s.tileY + dy;
+        if (nx < area.x || nx >= area.x + area.w || ny < area.y || ny >= area.y + area.h) continue;
+        const tile = map.tiles[ny]?.[nx];
+        if (tile === undefined || isSolid(tile) || isTallGrass(tile) || tile === "trackCrossing") {
+          continue;
+        }
+        if (WARP_FRONTS[mapId].has(`${nx},${ny}`)) continue;
+        if (mapId === "campus" && nx === SPAWN.x && ny === SPAWN.y) continue;
+        const playerThere =
+          (p.tileX === nx && p.tileY === ny) || (p.moving && p.fromX === nx && p.fromY === ny);
+        if (playerThere || npcAt(nx, ny, mapId) || findCustomNPCAt(nx, ny)) continue;
+
+        s.fromX = s.tileX;
+        s.fromY = s.tileY;
+        s.toX = nx;
+        s.toY = ny;
+        s.tileX = nx;
+        s.tileY = ny;
+        s.moveStart = now;
+        s.moving = true;
+        s.walkFrame = s.walkFrame === 0 ? 1 : 0;
+      }
+    },
+    [npcAt, findCustomNPCAt]
+  );
+
   // Wandering AI for trainers added after the legendary review (campus only).
   const updateCustomNPCs = useCallback(
     (now: number) => {
@@ -751,6 +908,7 @@ const ExploreGame = () => {
       }
 
       updateTrains(now, dt);
+      updateNPCs(now, !blocked);
       if (!blocked && onCampus) updateCustomNPCs(now);
 
       // Camera: follow the player, clamp to the map, centre small maps.
@@ -846,12 +1004,20 @@ const ExploreGame = () => {
 
       for (const npc of npcsOnMap(map.id)) {
         if (npc.hideAfterGift && giftGiven.current.has(npc.id)) continue;
-        if (!visible(npc.x, npc.y)) continue;
+        const s = npcStateRef.current![npc.id];
+        let nx = s.tileX;
+        let ny = s.tileY;
+        if (s.moving) {
+          const t = Math.min(1, (now - s.moveStart) / NPC_MOVE_MS);
+          nx = s.fromX + (s.toX - s.fromX) * t;
+          ny = s.fromY + (s.toY - s.fromY) * t;
+        }
+        if (!visible(nx, ny)) continue;
         drawables.push({
-          y: npc.y,
+          y: ny,
           draw: () => {
-            const npx = npc.x * TILE_SIZE - camPxX;
-            const npy = npc.y * TILE_SIZE - camPxY;
+            const npx = nx * TILE_SIZE - camPxX;
+            const npy = ny * TILE_SIZE - camPxY;
             const species = npc.speciesId ? SPECIES[npc.speciesId] : undefined;
             if (npc.sprite === "pokemon" && species) {
               const bob = Math.sin(now / 350) * 1.5;
@@ -863,14 +1029,17 @@ const ExploreGame = () => {
                 npy,
                 npc.color,
                 npc.hair,
-                npcFacing.current[npc.id] ?? 0,
-                0,
+                s.facing,
+                s.moving ? s.walkFrame : 0,
                 null,
-                NPC_OUTFITS[npc.id] ?? "casual"
+                npc.outfit ?? "casual"
               );
             }
-            if (!blocked && isFacingPlayer(npc.x, npc.y)) {
+            if (!blocked && isFacingPlayer(s.tileX, s.tileY)) {
               drawHint(ctx, npx + TILE_SIZE / 2, npy - 6, now);
+            } else if (npc.trainer && !defeatedTrainers.current.has(npc.id)) {
+              // A Pokeball over trainers who still want to battle
+              drawTrainerBadge(ctx, npx + TILE_SIZE / 2, npy - 6, now);
             }
           },
         });
@@ -949,10 +1118,33 @@ const ExploreGame = () => {
 
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [tryMove, onStepComplete, updateTrains, updateCustomNPCs]);
+  }, [tryMove, onStepComplete, updateTrains, updateNPCs, updateCustomNPCs]);
 
   const handleBattleEnd = useCallback(
     (r: "win" | "lose") => {
+      // Trainer battle: no catching. Win a Repel Spray; losing just means a
+      // rematch later (you stay where you are).
+      if (battle?.trainer?.trainer) {
+        const npc = battle.trainer;
+        const info = npc.trainer!;
+        if (r === "win") {
+          defeatedTrainers.current.add(npc.id);
+          setRepels((n) => n + 1);
+          sounds.give();
+          showToast("Got a Repel Spray!");
+        }
+        setBattle(null);
+        setDialogue({
+          npc,
+          line: 0,
+          extraLines: r === "win" ? info.winLines : info.loseLines,
+          choiceShown: false,
+          finished: false,
+          isRepeat: false,
+          openedAt: performance.now(),
+        });
+        return;
+      }
       if (r === "win" && battle) {
         const name = battle.wild.species.name;
         const existing = teamRef.current.find((p) => p.species.id === battle.wild.species.id);
@@ -990,6 +1182,16 @@ const ExploreGame = () => {
     },
     [showToast]
   );
+
+  // Using a spray while one is active adds another 30 seconds.
+  const handleUseRepel = useCallback(() => {
+    if (repelsRef.current <= 0) return;
+    setRepels((n) => n - 1);
+    const now = Date.now();
+    setRepellentExpires((prev) => Math.max(prev ?? 0, now) + REPELLENT_MS);
+    sounds.select();
+    showToast("Used a Repel Spray. Wild Pokemon will stay away for 30 seconds.");
+  }, [showToast]);
 
   const handleNameSubmit = useCallback(
     (name: string) => {
@@ -1048,6 +1250,8 @@ const ExploreGame = () => {
       <PokemonHUD
         team={team}
         repellentExpires={repellentExpires}
+        repels={repels}
+        onUseRepel={handleUseRepel}
         onTradeForRepellent={handleTradeForRepellent}
       />
 
@@ -1081,7 +1285,12 @@ const ExploreGame = () => {
       )}
 
       {battle && (
-        <BattleScreen team={battle.team} wild={battle.wild} onEnd={handleBattleEnd} />
+        <BattleScreen
+          team={battle.team}
+          wild={battle.wild}
+          trainerName={battle.trainer?.name}
+          onEnd={handleBattleEnd}
+        />
       )}
 
       {/* Opening screen: ask for the player's name before anything else. */}
@@ -1126,6 +1335,34 @@ const drawHint = (ctx: CanvasRenderingContext2D, cx: number, cy: number, now: nu
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText("!", cx, cy + bob + 1);
+};
+
+// Small bobbing Pokeball shown over trainers who still want to battle.
+const drawTrainerBadge = (ctx: CanvasRenderingContext2D, cx: number, cy: number, now: number) => {
+  const y = cy + Math.sin(now / 300) * 1.5;
+  const r = 6;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, y, r, Math.PI, 0);
+  ctx.fillStyle = "#ef4444";
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(cx, y, r, 0, Math.PI);
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+  ctx.strokeStyle = "#1e293b";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(cx, y, r, 0, Math.PI * 2);
+  ctx.moveTo(cx - r, y);
+  ctx.lineTo(cx + r, y);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx, y, 2, 0, Math.PI * 2);
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
 };
 
 // Small dark pill with a name in it, centered horizontally on cx, bottom at baseY.

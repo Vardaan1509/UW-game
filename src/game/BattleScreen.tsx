@@ -5,19 +5,22 @@ import { sounds } from "./sounds";
 
 interface BattleScreenProps {
   team: Pokemon[];
-  wild: Pokemon;
+  wild: Pokemon; // the opponent's Pokemon (wild, or a trainer's)
+  trainerName?: string; // set for trainer battles: you win, but don't catch it
   onEnd: (result: "win" | "lose") => void;
 }
 
 type Phase = "select" | "intro" | "attack" | "faint" | "sendNext" | "victory" | "defeat";
 
-const BattleScreen = ({ team, wild, onEnd }: BattleScreenProps) => {
+const BattleScreen = ({ team, wild, trainerName, onEnd }: BattleScreenProps) => {
   const wildCanvasRef = useRef<HTMLCanvasElement>(null);
   const [phase, setPhase] = useState<Phase>(team.length > 1 ? "select" : "intro");
   const [selected, setSelected] = useState<Pokemon[]>(team.length === 1 ? [team[0]] : []);
   const [activeIdx, setActiveIdx] = useState(0);
   const [message, setMessage] = useState<string>(
-    `A wild ${wild.species.name} (Lv ${wild.level}) appeared!`
+    trainerName
+      ? `${trainerName} sent out ${wild.species.name} (Lv ${wild.level})!`
+      : `A wild ${wild.species.name} (Lv ${wild.level}) appeared!`
   );
   const [attackShake, setAttackShake] = useState(false);
   const [wildDefeated, setWildDefeated] = useState(false);
@@ -94,12 +97,14 @@ const BattleScreen = ({ team, wild, onEnd }: BattleScreenProps) => {
           setPhase("victory");
           setWildDefeated(true);
           setMessage(
-            wild.species.isLegendary
-              ? `You defeated a legendary ${wild.species.name}! Caught!`
-              : `You won! ${wild.species.name} was caught!`
+            trainerName
+              ? `You defeated ${trainerName}'s ${wild.species.name}!`
+              : wild.species.isLegendary
+                ? `You defeated a legendary ${wild.species.name}! Caught!`
+                : `You won! ${wild.species.name} was caught!`
           );
           sounds.victory();
-          setTimeout(() => sounds.catchSound(), 700);
+          if (!trainerName) setTimeout(() => sounds.catchSound(), 700);
           setTimeout(() => onEnd("win"), 2400);
         } else {
           setPhase("faint");
@@ -114,7 +119,11 @@ const BattleScreen = ({ team, wild, onEnd }: BattleScreenProps) => {
               setTimeout(() => runAttack(idx + 1), 900);
             } else {
               setPhase("defeat");
-              setMessage(`You have no more Pokemon! You lost!`);
+              setMessage(
+                trainerName
+                  ? `You're out of Pokemon! ${trainerName} wins.`
+                  : `You have no more Pokemon! You lost!`
+              );
               sounds.defeat();
               setTimeout(() => onEnd("lose"), 1800);
             }
@@ -130,6 +139,7 @@ const BattleScreen = ({ team, wild, onEnd }: BattleScreenProps) => {
         team={team}
         selected={selected}
         wild={wild}
+        trainerName={trainerName}
         onToggle={toggleSelect}
         onStart={startBattle}
       />
@@ -284,6 +294,7 @@ interface PartySelectScreenProps {
   team: Pokemon[];
   selected: Pokemon[];
   wild: Pokemon;
+  trainerName?: string;
   onToggle: (p: Pokemon) => void;
   onStart: () => void;
 }
@@ -292,6 +303,7 @@ const PartySelectScreen = ({
   team,
   selected,
   wild,
+  trainerName,
   onToggle,
   onStart,
 }: PartySelectScreenProps) => {
@@ -301,7 +313,9 @@ const PartySelectScreen = ({
 
       <div className="relative w-full max-w-4xl flex flex-col gap-4">
         <div className="text-center">
-          <p className="text-yellow-300 text-sm mb-1 uppercase tracking-widest">Wild Encounter</p>
+          <p className="text-yellow-300 text-sm mb-1 uppercase tracking-widest">
+            {trainerName ? `${trainerName} wants to battle!` : "Wild Encounter"}
+          </p>
           <h2 className="text-white text-2xl font-bold">
             {wild.species.isLegendary && "★ "}
             {wild.species.name} <span className="text-yellow-400">Lv {wild.level}</span>
