@@ -1,16 +1,16 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Keyboard, Volume2, VolumeX } from "lucide-react";
 import {
   TILE_SIZE,
   MAPS,
   SPAWN,
+  HALL_OF_FAME_SPOT,
   isSolid,
   isTallGrass,
   buildingAt,
   warpAt,
   bumpMessage,
   examineMessage,
-  HALL_OF_FAME_SPOT,
   type Direction,
   type MapId,
   type Warp,
@@ -23,21 +23,20 @@ import {
   drawPokemon,
   drawTrain,
   drawCrossingLights,
-  type OutfitStyle,
 } from "./sprites";
 import { npcs, npcsOnMap, type NPC } from "./npcs";
 import {
-  makePokemon,
-  rollWildEncounter,
-  addToTeam,
-  hasLegendary,
   MAX_LEVEL,
   SPECIES,
+  addToTeam,
+  hasLegendary,
+  makePokemon,
+  rollWildEncounter,
   type Pokemon,
 } from "./pokemon";
 import { sounds } from "./sounds";
 import BattleScreen from "./BattleScreen";
-import PokemonHUD from "./PokemonHUD";
+import PokemonHUD, { TradeModal } from "./PokemonHUD";
 import NamePromptModal from "./NamePromptModal";
 import TouchControls, { type TouchDir } from "./TouchControls";
 import TunnelOverlay from "./TunnelOverlay";
@@ -50,22 +49,41 @@ const DIRS: Record<Direction, { dx: number; dy: number }> = {
 };
 const OPPOSITE: Record<Direction, Direction> = { 0: 1, 1: 0, 2: 3, 3: 2 };
 
+const MOVE_KEYS: [Direction, string[]][] = [
+  [1, ["arrowup", "w"]],
+  [0, ["arrowdown", "s"]],
+  [2, ["arrowleft", "a"]],
+  [3, ["arrowright", "d"]],
+];
+const ACTION_KEYS = [" ", "e", "enter"];
+const GAME_KEYS = new Set([...MOVE_KEYS.flatMap(([, keys]) => keys), ...ACTION_KEYS]);
+const TOUCH_KEY: Record<TouchDir, string> = {
+  up: "arrowup",
+  down: "arrowdown",
+  left: "arrowleft",
+  right: "arrowright",
+};
+
 const MOVE_MS = 160;
 const ENCOUNTER_CHANCE = 0.28;
-const REPELLENT_MS = 30_000;
+const REPEL_MS = 30_000;
 const FADE_MS = 200;
+const FAINT_MS = 900;
 const TOAST_MS = 2400;
 const BUMP_COOLDOWN_MS = 1200;
+const ANIM_TICK_MS = 400;
+const MAX_FRAME_MS = 50; // a long pause (background tab) shouldn't jump the trains forward
+const MAX_DPR = 1.5; // chunky pixel art gains nothing from more pixels, and phones slow down
 
 // ============ NPC MOVEMENT ============
 
-const NPC_MOVE_MS = 300; // NPCs stroll a bit slower than the player
+const NPC_MOVE_MS = 300;
 const NPC_PAUSE_MIN_MS = 1200;
 const NPC_PAUSE_MAX_MS = 3800;
-const NPC_LOOK_AROUND_CHANCE = 0.3; // sometimes they just turn instead of stepping
-const NPC_TALK_PAUSE_MS = 2500; // stay put for a moment after talking to you
+const NPC_LOOK_AROUND_CHANCE = 0.3; // sometimes they only turn instead of stepping
+const NPC_TALK_PAUSE_MS = 2500;
 
-interface NPCState {
+interface Mover {
   tileX: number;
   tileY: number;
   fromX: number;
@@ -76,41 +94,63 @@ interface NPCState {
   moving: boolean;
   facing: Direction;
   walkFrame: number;
+}
+
+interface NPCState extends Mover {
   nextMoveAt: number;
 }
+
+const createMover = (x: number, y: number, facing: Direction): Mover => ({
+  tileX: x,
+  tileY: y,
+  fromX: x,
+  fromY: y,
+  toX: x,
+  toY: y,
+  moveStart: 0,
+  moving: false,
+  facing,
+  walkFrame: 0,
+});
+
+const startStep = (m: Mover, x: number, y: number, now: number) => {
+  m.fromX = m.tileX;
+  m.fromY = m.tileY;
+  m.toX = x;
+  m.toY = y;
+  m.tileX = x;
+  m.tileY = y;
+  m.moveStart = now;
+  m.moving = true;
+  m.walkFrame = m.walkFrame === 0 ? 1 : 0;
+};
+
+// Where a mover is drawn right now, partway between tiles while stepping.
+const renderPosition = (m: Mover, now: number, durationMs: number) => {
+  if (!m.moving) return { x: m.tileX, y: m.tileY };
+  const t = Math.min(1, (now - m.moveStart) / durationMs);
+  return { x: m.fromX + (m.toX - m.fromX) * t, y: m.fromY + (m.toY - m.fromY) * t };
+};
+
+// A stepping mover occupies both the tile it left and the tile it's entering.
+const occupies = (m: Mover, x: number, y: number) =>
+  (m.tileX === x && m.tileY === y) || (m.moving && m.fromX === x && m.fromY === y);
 
 const createNPCStates = (now: number): Record<string, NPCState> =>
   Object.fromEntries(
     npcs.map((n) => [
       n.id,
-      {
-        tileX: n.x,
-        tileY: n.y,
-        fromX: n.x,
-        fromY: n.y,
-        toX: n.x,
-        toY: n.y,
-        moveStart: 0,
-        moving: false,
-        facing: n.facing ?? 0,
-        walkFrame: 0,
-        nextMoveAt: now + 1000 + Math.random() * 3000,
-      },
+      { ...createMover(n.x, n.y, n.facing ?? 0), nextMoveAt: now + 1000 + Math.random() * 3000 },
     ])
   );
 
-// Tiles next to a door or exit. Wanderers keep off them so they never block one.
+// Tiles next to a door. Wanderers keep off them so they never block one.
 const WARP_FRONTS = Object.fromEntries(
   Object.values(MAPS).map((m) => [
     m.id,
     new Set(
       m.warps.flatMap((w) =>
-        [
-          [w.x + 1, w.y],
-          [w.x - 1, w.y],
-          [w.x, w.y + 1],
-          [w.x, w.y - 1],
-        ].map(([x, y]) => `${x},${y}`)
+        Object.values(DIRS).map(({ dx, dy }) => `${w.x + dx},${w.y + dy}`)
       )
     ),
   ])
@@ -124,7 +164,7 @@ const TRAIN_IDLE_MIN_MS = 4000;
 const TRAIN_IDLE_MAX_MS = 10000;
 const TRAIN_ENTRY_MARGIN = 2.5; // can't step onto a crossing with a train this close
 const TRAIN_LIGHTS_MARGIN = 7; // crossing lights flash when a train is this close
-const TRAIN_BELL_RANGE = 9; // you hear the bell within this many rows of the tracks
+const TRAIN_BELL_RANGE = 9; // the bell is heard within this many rows of the tracks
 
 interface Train {
   row: number;
@@ -134,20 +174,19 @@ interface Train {
   idleUntil: number;
 }
 
-const randomIdle = () =>
+const randomTrainIdle = () =>
   TRAIN_IDLE_MIN_MS + Math.random() * (TRAIN_IDLE_MAX_MS - TRAIN_IDLE_MIN_MS);
 
+// The north track runs west and the south track runs east.
 const createTrains = (now: number): Train[] =>
   MAPS.campus.trackRows.map((row, i) => ({
     row,
-    // North track runs west, south track runs east.
-    dir: (i === 0 ? -1 : 1) as 1 | -1,
+    dir: i === 0 ? -1 : 1,
     x: 0,
     running: false,
     idleUntil: now + 2000 + i * 3500,
   }));
 
-// True when the train covers column tileX or is within `margin` tiles of it.
 const trainNear = (t: Train, tileX: number, margin: number) =>
   t.running && t.x < tileX + 1 + margin && t.x + TRAIN_LENGTH > tileX - margin;
 
@@ -156,112 +195,124 @@ const trainNear = (t: Train, tileX: number, margin: number) =>
 interface DialogueState {
   npc: NPC;
   line: number;
-  extraLines: string[] | null;
+  extraLines: string[] | null; // replaces npc.dialogue when set
   choiceShown: boolean;
-  finished: boolean;
+  isRepeat?: boolean;
   isLegendaryReview?: boolean;
-  isRepeat?: boolean; // extraLines are the NPC's repeat dialogue
-  openedAt?: number; // used to ignore the tap that opened the dialogue
+  openedAt: number;
 }
 
-// The choice shows at the end of the first conversation, or at the end of the
-// repeat conversation for NPCs that re-offer it.
-const choiceAvailable = (s: DialogueState): boolean =>
+const openDialogue = (
+  npc: NPC,
+  extra: Partial<Pick<DialogueState, "extraLines" | "isRepeat" | "isLegendaryReview">> = {}
+): DialogueState => ({
+  npc,
+  line: 0,
+  extraLines: null,
+  choiceShown: false,
+  openedAt: performance.now(),
+  ...extra,
+});
+
+// The choice appears at the end of the first conversation, or at the end of
+// the repeat conversation for NPCs that offer it again.
+const choiceAvailable = (s: DialogueState) =>
   !!s.npc.choice && (!s.extraLines || (!!s.isRepeat && !!s.npc.repeatOffersChoice));
 
-// A tap on the A button opens a dialogue, and on mobile the trailing click can
-// land on the dialogue box and skip the first line. Ignore advances this soon.
+// On phones the tap that opens a dialogue can also land on the dialogue box
+// and skip the first line, so advancing is ignored this soon after opening.
 const OPEN_GUARD_MS = 350;
 
-// The trainer honoured in the CSC Hall of Fame after catching a legendary.
-// Only one per game. They stand on the pedestal in the CSC office.
+// ============ HALL OF FAME ============
+
 interface HonouredTrainer {
   name: string;
 }
-const HONOURED_SHIRT = "#d4a72c";
-const HONOURED_HAIR = "#1a1008";
-const HONOURED_OUTFIT: OutfitStyle = "trainer";
+
+const HONOURED_LOOK = { shirt: "#d4a72c", hair: "#1a1008" };
+
+const honouredNPC = (h: HonouredTrainer): NPC => ({
+  id: "honoured",
+  name: h.name,
+  role: "Hall of Fame",
+  mapId: "csc",
+  x: HALL_OF_FAME_SPOT.x,
+  y: HALL_OF_FAME_SPOT.y,
+  color: HONOURED_LOOK.shirt,
+  hair: HONOURED_LOOK.hair,
+  dialogue: [
+    `I'm ${h.name}, the trainer who caught a Compileon.`,
+    "My name's on the plaque now. Not bad, right?",
+    "Good luck out there.",
+  ],
+});
+
+// Keeps a ref in sync with the latest value, so the game loop and event
+// handlers can read current state without re-subscribing every render.
+const useLatest = <T,>(value: T) => {
+  const ref = useRef(value);
+  ref.current = value;
+  return ref;
+};
+
+interface BattleState {
+  team: Pokemon[];
+  opponent: Pokemon;
+  trainer?: NPC;
+}
 
 const ExploreGame = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [dialogue, setDialogue] = useState<DialogueState | null>(null);
-  const [team, setTeam] = useState<Pokemon[]>([]);
-  // `trainer` is set for trainer battles; otherwise it's a wild encounter.
-  const [battle, setBattle] = useState<{ team: Pokemon[]; wild: Pokemon; trainer?: NPC } | null>(
-    null
-  );
-  const [repels, setRepels] = useState(0);
-  const [muted, setMuted] = useState(() => sounds.isMuted());
-  const [toast, setToast] = useState<string | null>(null);
-  const [fainted, setFainted] = useState(false);
-  const [repellentExpires, setRepellentExpires] = useState<number | null>(null);
-  const [showNamePrompt, setShowNamePrompt] = useState(false);
-  // null until the player enters a name on the opening screen.
-  const [playerName, setPlayerName] = useState<string | null>(null);
-  const [honoured, setHonoured] = useState<HonouredTrainer | null>(null);
-  const [legendaryReviewed, setLegendaryReviewed] = useState(false);
-  const [isTouch, setIsTouch] = useState(false);
-  const [fading, setFading] = useState(false);
-  // Set while the tunnel animation plays between MC and PAC.
-  const [tunnel, setTunnel] = useState<{ caption: string; warp: Warp } | null>(null);
 
+  const [playerName, setPlayerName] = useState<string | null>(null);
+  const [team, setTeam] = useState<Pokemon[]>([]);
+  const [repels, setRepels] = useState(0);
+  const [repelUntil, setRepelUntil] = useState<number | null>(null);
+  const [dialogue, setDialogue] = useState<DialogueState | null>(null);
+  const [battle, setBattle] = useState<BattleState | null>(null);
+  const [trading, setTrading] = useState(false);
+  const [askingHonourName, setAskingHonourName] = useState(false);
+  const [honoured, setHonoured] = useState<HonouredTrainer | null>(null);
+  const [tunnel, setTunnel] = useState<{ caption: string; warp: Warp } | null>(null);
+  const [fading, setFading] = useState(false);
+  const [fainted, setFainted] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [muted, setMuted] = useState(() => sounds.isMuted());
+  const [isTouch, setIsTouch] = useState(false);
+
+  // Anything that pauses walking. Fading is tracked separately in a ref
+  // because it has to take effect within the same frame.
+  const overlayOpen =
+    playerName === null || !!dialogue || !!battle || trading || askingHonourName || !!tunnel || fainted;
+
+  const playerNameRef = useLatest(playerName);
+  const teamRef = useLatest(team);
+  const repelsRef = useLatest(repels);
+  const repelUntilRef = useLatest(repelUntil);
+  const dialogueRef = useLatest(dialogue);
+  const honouredRef = useLatest(honoured);
+  const overlayOpenRef = useLatest(overlayOpen);
+  const fadingRef = useRef(false);
+
+  const player = useRef<Mover>(createMover(SPAWN.x, SPAWN.y, SPAWN.facing));
+  const mapIdRef = useRef<MapId>("campus");
+  const npcStates = useRef<Record<string, NPCState>>(createNPCStates(performance.now()));
+  const trains = useRef<Train[]>(createTrains(performance.now()));
+  const keys = useRef<Set<string>>(new Set());
+  const animFrame = useRef(0);
   const talkedTo = useRef<Set<string>>(new Set());
   const giftGiven = useRef<Set<string>>(new Set());
   const defeatedTrainers = useRef<Set<string>>(new Set());
-  const npcStateRef = useRef<Record<string, NPCState> | null>(null);
-  if (npcStateRef.current === null) npcStateRef.current = createNPCStates(performance.now());
-  const repelsRef = useRef(0);
-  repelsRef.current = repels;
+  const legendaryReviewed = useRef(false);
+  const toastTimer = useRef<number | null>(null);
+  const lastBump = useRef({ text: "", at: 0 });
 
-  const playerRef = useRef({
-    tileX: SPAWN.x,
-    tileY: SPAWN.y,
-    facing: SPAWN.facing as Direction,
-    fromX: SPAWN.x,
-    fromY: SPAWN.y,
-    toX: SPAWN.x,
-    toY: SPAWN.y,
-    moveStart: 0,
-    moving: false,
-    walkFrame: 0,
-  });
-  const mapIdRef = useRef<MapId>("campus");
-  const trainsRef = useRef<Train[] | null>(null);
-  if (trainsRef.current === null) trainsRef.current = createTrains(performance.now());
-  const keysRef = useRef<Set<string>>(new Set());
-  const animFrameRef = useRef(0);
-  const dialogueRef = useRef<DialogueState | null>(null);
-  dialogueRef.current = dialogue;
-  const battleRef = useRef<typeof battle>(null);
-  battleRef.current = battle;
-  const teamRef = useRef<Pokemon[]>([]);
-  teamRef.current = team;
-  const faintedRef = useRef(false);
-  faintedRef.current = fainted;
-  const repellentExpiresRef = useRef<number | null>(null);
-  repellentExpiresRef.current = repellentExpires;
-  const honouredRef = useRef<HonouredTrainer | null>(null);
-  honouredRef.current = honoured;
-  const legendaryReviewedRef = useRef(false);
-  legendaryReviewedRef.current = legendaryReviewed;
-  const showNamePromptRef = useRef(false);
-  showNamePromptRef.current = showNamePrompt;
-  const playerNameRef = useRef<string | null>(null);
-  playerNameRef.current = playerName;
-  const fadingRef = useRef(false);
-  const toastTimerRef = useRef<number | null>(null);
-  const lastBumpRef = useRef({ text: "", at: 0 });
-
-  // Detect touch-capable devices to show on-screen controls.
   useEffect(() => {
-    const coarse =
-      typeof window !== "undefined" &&
-      (window.matchMedia?.("(pointer: coarse)").matches || "ontouchstart" in window);
-    setIsTouch(!!coarse);
+    setIsTouch(window.matchMedia?.("(pointer: coarse)").matches || "ontouchstart" in window);
   }, []);
 
-  // Unlock audio on the first real user gesture. pointerup/touchend/keydown
-  // count as user activation on mobile; pointerdown from a finger does not.
+  // Phones only allow audio to start inside a real gesture. A finger's
+  // pointerdown doesn't count, but pointerup, touchend and keydown do.
   useEffect(() => {
     const unlock = () => sounds.unlock();
     const events = ["pointerup", "touchend", "keydown", "click"] as const;
@@ -269,74 +320,60 @@ const ExploreGame = () => {
     return () => events.forEach((ev) => window.removeEventListener(ev, unlock));
   }, []);
 
-  // Map a touch direction to the same key the movement loop already listens for.
-  const TOUCH_KEY: Record<TouchDir, string> = {
-    up: "arrowup",
-    down: "arrowdown",
-    left: "arrowleft",
-    right: "arrowright",
-  };
-  const pressDir = useCallback((dir: TouchDir) => {
-    keysRef.current.add(TOUCH_KEY[dir]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const releaseDir = useCallback((dir: TouchDir) => {
-    keysRef.current.delete(TOUCH_KEY[dir]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // When an overlay opens, the touch controls disappear before their
+  // pointer-up can fire. Clearing held keys stops the player walking on
+  // by themselves once the overlay closes.
+  useEffect(() => {
+    if (overlayOpen) keys.current.clear();
+  }, [overlayOpen]);
+
+  // Keys released while the window is in the background never send a keyup.
+  useEffect(() => {
+    const clear = () => keys.current.clear();
+    window.addEventListener("blur", clear);
+    document.addEventListener("visibilitychange", clear);
+    return () => {
+      window.removeEventListener("blur", clear);
+      document.removeEventListener("visibilitychange", clear);
+    };
   }, []);
 
-  // If a battle or name prompt begins while a D-pad direction is held, the touch
-  // controls unmount before their pointer-up fires. Clear any held keys so the
-  // player doesn't keep walking after returning to the map.
-  useEffect(() => {
-    if (battle || showNamePrompt || playerName === null) {
-      keysRef.current.clear();
-    }
-  }, [battle, showNamePrompt, playerName]);
+  useEffect(() => () => {
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+  }, []);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
-    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = window.setTimeout(() => setToast(null), TOAST_MS);
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), TOAST_MS);
   }, []);
 
-  // Toast for walking into something. Holding a direction against a locked door
-  // calls this every frame, so repeats of the same message are throttled.
+  // Holding a direction against a wall tries the move every frame, so the
+  // same message is only shown again after a cooldown.
   const bump = useCallback(
     (text: string) => {
       const now = performance.now();
-      const last = lastBumpRef.current;
-      if (last.text === text && now - last.at < BUMP_COOLDOWN_MS) return;
-      lastBumpRef.current = { text, at: now };
+      if (lastBump.current.text === text && now - lastBump.current.at < BUMP_COOLDOWN_MS) return;
+      lastBump.current = { text, at: now };
       showToast(text);
     },
     [showToast]
   );
 
-  const placePlayer = useCallback((x: number, y: number, facing: Direction) => {
-    const p = playerRef.current;
-    p.tileX = x;
-    p.tileY = y;
-    p.fromX = x;
-    p.fromY = y;
-    p.toX = x;
-    p.toY = y;
-    p.moving = false;
-    p.facing = facing;
+  const placePlayer = useCallback((mapId: MapId, x: number, y: number, facing: Direction) => {
+    mapIdRef.current = mapId;
+    player.current = createMover(x, y, facing);
   }, []);
 
-  const respawn = useCallback(() => {
-    mapIdRef.current = "campus";
-    placePlayer(SPAWN.x, SPAWN.y, SPAWN.facing);
-  }, [placePlayer]);
+  const respawn = useCallback(() => placePlayer("campus", SPAWN.x, SPAWN.y, SPAWN.facing), [placePlayer]);
 
-  // Move to the warp's destination and fade back in.
-  const arriveAt = useCallback(
+  // ============ DOORS AND THE TUNNEL ============
+
+  const arrive = useCallback(
     (w: Warp) => {
-      mapIdRef.current = w.to;
-      placePlayer(w.toX, w.toY, w.facing);
+      placePlayer(w.to, w.toX, w.toY, w.facing);
       showToast(MAPS[w.to].name);
-      // Let the new map draw one frame before fading back in.
+      // Let the new room draw one frame before fading back in.
       requestAnimationFrame(() => {
         setFading(false);
         fadingRef.current = false;
@@ -345,8 +382,6 @@ const ExploreGame = () => {
     [placePlayer, showToast]
   );
 
-  // Fade to black, then either play the tunnel animation or arrive straight away.
-  // fadingRef stays true the whole time so the player can't move.
   const warpTo = useCallback(
     (w: Warp) => {
       if (fadingRef.current) return;
@@ -358,79 +393,104 @@ const ExploreGame = () => {
           sounds.tunnel();
           setTunnel({ caption: w.tunnel, warp: w });
         } else {
-          arriveAt(w);
+          arrive(w);
         }
       }, FADE_MS);
     },
-    [arriveAt]
+    [arrive]
   );
 
-  const tunnelRef = useRef<typeof tunnel>(null);
-  tunnelRef.current = tunnel;
+  const tunnelRef = useLatest(tunnel);
   const finishTunnel = useCallback(() => {
     const current = tunnelRef.current;
     if (!current) return;
     tunnelRef.current = null;
     setTunnel(null);
-    arriveAt(current.warp);
-  }, [arriveAt]);
+    arrive(current.warp);
+  }, [arrive, tunnelRef]);
 
-  // The NPC standing on (x, y), using their live position. A walking NPC
-  // occupies both the tile they're leaving and the tile they're heading to.
-  // NPCs that joined your team are skipped.
+  // ============ WHO'S WHERE ============
+
   const npcAt = useCallback((x: number, y: number, mapId: MapId = mapIdRef.current) => {
-    return npcsOnMap(mapId).find((n) => {
-      if (n.hideAfterGift && giftGiven.current.has(n.id)) return false;
-      const s = npcStateRef.current![n.id];
-      return (s.tileX === x && s.tileY === y) || (s.moving && s.fromX === x && s.fromY === y);
-    });
+    return npcsOnMap(mapId).find(
+      (n) => !(n.hideAfterGift && giftGiven.current.has(n.id)) && occupies(npcStates.current[n.id], x, y)
+    );
   }, []);
 
-  // The honoured trainer, if (x, y) is their pedestal in the CSC office.
-  const honouredAt = useCallback((x: number, y: number): HonouredTrainer | null => {
-    if (mapIdRef.current !== "csc") return null;
-    if (x !== HALL_OF_FAME_SPOT.x || y !== HALL_OF_FAME_SPOT.y) return null;
-    return honouredRef.current;
+  const honouredAt = useCallback(
+    (x: number, y: number): HonouredTrainer | null =>
+      mapIdRef.current === "csc" && x === HALL_OF_FAME_SPOT.x && y === HALL_OF_FAME_SPOT.y
+        ? honouredRef.current
+        : null,
+    [honouredRef]
+  );
+
+  // ============ ITEMS AND POKEMON ============
+
+  const givePokemon = useCallback(
+    (speciesId: string) => {
+      const pk = makePokemon(speciesId);
+      setTeam((prev) => addToTeam(prev, pk));
+      sounds.give();
+      showToast(`Got ${pk.species.name} (Lv ${pk.level})!`);
+    },
+    [showToast]
+  );
+
+  // A new spray adds 30 seconds on top of one that's still running.
+  const applyRepel = useCallback(() => {
+    setRepelUntil((prev) => Math.max(prev ?? 0, Date.now()) + REPEL_MS);
   }, []);
+
+  const spendRepel = useCallback(() => {
+    if (repelsRef.current <= 0) return;
+    setRepels((n) => n - 1);
+    applyRepel();
+    sounds.select();
+    showToast("Used a Repel Spray. Wild Pokemon will stay away for 30 seconds.");
+  }, [applyRepel, repelsRef, showToast]);
+
+  const tradeForRepel = useCallback(
+    (traded: Pokemon) => {
+      setTrading(false);
+      // The trade screen already blocks these, so this only guards misuse.
+      if (traded.species.isLegendary || teamRef.current.length <= 1) return;
+      setTeam((prev) => prev.filter((p) => p.uid !== traded.uid));
+      applyRepel();
+      sounds.give();
+      showToast(`Traded ${traded.species.name} for a Repel Spray!`);
+    },
+    [applyRepel, showToast, teamRef]
+  );
+
+  // ============ MOVEMENT ============
 
   const startEncounter = useCallback(() => {
-    // Skip encounters while repellent is active
-    if (repellentExpiresRef.current && Date.now() < repellentExpiresRef.current) {
-      return;
-    }
-    const roster = teamRef.current;
-    if (roster.length === 0) {
+    if (repelUntilRef.current !== null && Date.now() < repelUntilRef.current) return;
+    // Pause right away. The game loop reads this ref before React re-renders,
+    // and the player shouldn't take another step in the meantime.
+    overlayOpenRef.current = true;
+    if (teamRef.current.length === 0) {
       sounds.faint();
       setFainted(true);
-      setTimeout(() => {
+      window.setTimeout(() => {
         respawn();
         setFainted(false);
         showToast("You fainted with no Pokemon! Talk to Vardaan outside E7 first.");
-      }, 900);
+      }, FAINT_MS);
       return;
     }
-    const wild = rollWildEncounter();
     sounds.encounter();
-    setBattle({ team: roster, wild });
-  }, [respawn, showToast]);
-
-  const onStepComplete = useCallback(() => {
-    const p = playerRef.current;
-    const tile = MAPS[mapIdRef.current].tiles[p.tileY]?.[p.tileX];
-    if (tile && isTallGrass(tile) && Math.random() < ENCOUNTER_CHANCE) {
-      startEncounter();
-    }
-  }, [startEncounter]);
+    setBattle({ team: teamRef.current, opponent: rollWildEncounter() });
+  }, [overlayOpenRef, repelUntilRef, respawn, showToast, teamRef]);
 
   const tryMove = useCallback(
     (direction: Direction) => {
-      const p = playerRef.current;
-      if (p.moving || fadingRef.current) return;
+      const p = player.current;
       p.facing = direction;
       const map = MAPS[mapIdRef.current];
-      const { dx, dy } = DIRS[direction];
-      const nx = p.tileX + dx;
-      const ny = p.tileY + dy;
+      const nx = p.tileX + DIRS[direction].dx;
+      const ny = p.tileY + DIRS[direction].dy;
       if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) return;
 
       const warp = warpAt(map, nx, ny);
@@ -446,85 +506,63 @@ const ExploreGame = () => {
       }
       if (npcAt(nx, ny)) return;
       if (tile === "trackCrossing") {
-        const train = trainsRef.current!.find((t) => t.row === ny);
+        const train = trains.current.find((t) => t.row === ny);
         if (train && trainNear(train, nx, TRAIN_ENTRY_MARGIN)) {
           bump("Wait for the ION to pass!");
           return;
         }
       }
-
-      p.fromX = p.tileX;
-      p.fromY = p.tileY;
-      p.toX = nx;
-      p.toY = ny;
-      p.tileX = nx;
-      p.tileY = ny;
-      p.moveStart = performance.now();
-      p.moving = true;
-      p.walkFrame = p.walkFrame === 0 ? 1 : 0;
+      startStep(p, nx, ny, performance.now());
       sounds.step();
     },
     [bump, npcAt, warpTo]
   );
 
-  const finishDialogueWithNPC = useCallback(
-    (npc: NPC) => {
-      if (npc.givesPokemon && !giftGiven.current.has(npc.id)) {
-        giftGiven.current.add(npc.id);
-        const pk = makePokemon(npc.givesPokemon);
-        setTeam((prev) => addToTeam(prev, pk));
-        sounds.give();
-        showToast(`Got ${pk.species.name} (Lv ${pk.level})!`);
-      }
-    },
-    [showToast]
-  );
+  // ============ TALKING ============
 
   const advanceDialogue = useCallback(() => {
     const state = dialogueRef.current;
-    if (!state) return;
-    if (state.openedAt && performance.now() - state.openedAt < OPEN_GUARD_MS) return;
+    if (!state || state.choiceShown) return;
+    if (performance.now() - state.openedAt < OPEN_GUARD_MS) return;
 
-    const currentLines = state.extraLines ?? state.npc.dialogue;
-    const isLast = state.line >= currentLines.length - 1;
-
-    if (!isLast) {
+    const lines = state.extraLines ?? state.npc.dialogue;
+    if (state.line < lines.length - 1) {
       setDialogue({ ...state, line: state.line + 1 });
       sounds.talk();
       return;
     }
-
-    if (choiceAvailable(state) && !state.choiceShown) {
+    if (choiceAvailable(state)) {
       setDialogue({ ...state, choiceShown: true });
       return;
     }
 
-    // Close
-    const finishingNPC = state.npc;
-    const wasLegendaryReview = !!state.isLegendaryReview;
+    const npc = state.npc;
     setDialogue(null);
-    talkedTo.current.add(finishingNPC.id);
-    if (!finishingNPC.choice) {
-      finishDialogueWithNPC(finishingNPC);
+    talkedTo.current.add(npc.id);
+    if (npc.givesPokemon && !giftGiven.current.has(npc.id)) {
+      giftGiven.current.add(npc.id);
+      givePokemon(npc.givesPokemon);
     }
-    if (wasLegendaryReview) {
-      setLegendaryReviewed(true);
-      setShowNamePrompt(true);
+    if (state.isLegendaryReview) {
+      legendaryReviewed.current = true;
+      setAskingHonourName(true);
     }
-  }, [finishDialogueWithNPC]);
+  }, [dialogueRef, givePokemon]);
 
   const chooseOption = useCallback(
-    (optionIndex: number) => {
+    (index: number) => {
       const state = dialogueRef.current;
-      if (!state || !state.npc.choice) return;
-      const option = state.npc.choice.options[optionIndex];
+      const option = state?.npc.choice?.options[index];
+      if (!state || !option) return;
       sounds.select();
-      if (option.action === "battle" && state.npc.trainer) {
+
+      const trainer = state.npc.trainer;
+      if (option.startsBattle && trainer) {
         if (teamRef.current.length === 0) {
           setDialogue({
             ...state,
-            line: 0,
             extraLines: ["You don't have any Pokemon yet! Talk to Vardaan outside E7 first."],
+            line: 0,
             choiceShown: false,
             isRepeat: false,
           });
@@ -535,173 +573,82 @@ const ExploreGame = () => {
         sounds.encounter();
         setBattle({
           team: teamRef.current,
-          wild: makePokemon(state.npc.trainer.pokemonId, state.npc.trainer.level),
+          opponent: makePokemon(trainer.pokemonId, trainer.level),
           trainer: state.npc,
         });
         return;
       }
-      if (option.action === "givePokemon" && option.pokemonId) {
-        const npc = state.npc;
-        if (!giftGiven.current.has(npc.id)) {
-          giftGiven.current.add(npc.id);
-          const pk = makePokemon(option.pokemonId);
-          setTeam((prev) => addToTeam(prev, pk));
-          sounds.give();
-          showToast(`Got ${pk.species.name} (Lv ${pk.level})!`);
-        }
-      }
-      setDialogue({
-        ...state,
-        line: 0,
-        extraLines: option.responseLines,
-        choiceShown: false,
-        isRepeat: false,
-      });
+      setDialogue({ ...state, extraLines: option.responseLines, line: 0, choiceShown: false, isRepeat: false });
     },
-    [showToast]
+    [dialogueRef, teamRef]
   );
 
-  const openHonouredDialogue = useCallback((h: HonouredTrainer) => {
-    const tempNPC: NPC = {
-      id: "honoured",
-      name: h.name,
-      role: "Hall of Fame",
-      mapId: "csc",
-      x: HALL_OF_FAME_SPOT.x,
-      y: HALL_OF_FAME_SPOT.y,
-      color: HONOURED_SHIRT,
-      hair: HONOURED_HAIR,
-      dialogue: [
-        `I'm ${h.name}, the trainer who caught a Compileon.`,
-        "My name's on the plaque now. Not bad, right?",
-        "Good luck out there.",
-      ],
-    };
+  const talkTo = useCallback((npc: NPC) => {
     sounds.talk();
-    setDialogue({
-      npc: tempNPC,
-      line: 0,
-      extraLines: null,
-      choiceShown: false,
-      finished: false,
-      openedAt: performance.now(),
-    });
-  }, []);
+    const s = npcStates.current[npc.id];
+    s.facing = OPPOSITE[player.current.facing];
+    s.nextMoveAt = performance.now() + NPC_TALK_PAUSE_MS;
+
+    const met = talkedTo.current.has(npc.id);
+    if (npc.trainer && defeatedTrainers.current.has(npc.id)) {
+      setDialogue(openDialogue(npc, { extraLines: npc.trainer.defeatedLines }));
+    } else if (npc.legendaryReview && met && !legendaryReviewed.current && hasLegendary(teamRef.current)) {
+      setDialogue(openDialogue(npc, { extraLines: npc.legendaryReview, isLegendaryReview: true }));
+    } else if (met && npc.dialogueRepeat) {
+      setDialogue(openDialogue(npc, { extraLines: npc.dialogueRepeat, isRepeat: true }));
+    } else {
+      setDialogue(openDialogue(npc));
+    }
+  }, [teamRef]);
 
   const interact = useCallback(() => {
     if (dialogueRef.current) {
-      if (dialogueRef.current.choiceShown) return;
       advanceDialogue();
       return;
     }
-    if (fadingRef.current) return;
-    const p = playerRef.current;
+    if (overlayOpenRef.current || fadingRef.current) return;
+
+    const p = player.current;
     const map = MAPS[mapIdRef.current];
-    const { dx, dy } = DIRS[p.facing];
-    const nx = p.tileX + dx;
-    const ny = p.tileY + dy;
+    const nx = p.tileX + DIRS[p.facing].dx;
+    const ny = p.tileY + DIRS[p.facing].dy;
 
     const npc = npcAt(nx, ny);
     if (npc) {
-      sounds.talk();
-      // Turn to face the player, and don't wander off mid-conversation.
-      const s = npcStateRef.current![npc.id];
-      s.facing = OPPOSITE[p.facing];
-      s.nextMoveAt = performance.now() + NPC_TALK_PAUSE_MS;
-      // Trainers you've already beaten just chat.
-      if (npc.trainer && defeatedTrainers.current.has(npc.id)) {
-        setDialogue({
-          npc,
-          line: 0,
-          extraLines: npc.trainer.defeatedLines,
-          choiceShown: false,
-          finished: false,
-          isRepeat: false,
-          openedAt: performance.now(),
-        });
-        return;
-      }
-      // Legendary review: an NPC with legendaryReview lines reacts once you've
-      // met them and brought a legendary. No NPC uses this in the current map.
-      if (
-        npc.legendaryReview &&
-        talkedTo.current.has(npc.id) &&
-        !legendaryReviewedRef.current &&
-        hasLegendary(teamRef.current)
-      ) {
-        setDialogue({
-          npc,
-          line: 0,
-          extraLines: npc.legendaryReview,
-          choiceShown: false,
-          finished: false,
-          isLegendaryReview: true,
-          openedAt: performance.now(),
-        });
-        return;
-      }
-      const useRepeat = talkedTo.current.has(npc.id) && !!npc.dialogueRepeat;
-      setDialogue({
-        npc,
-        line: 0,
-        extraLines: useRepeat ? npc.dialogueRepeat! : null,
-        choiceShown: false,
-        finished: false,
-        isRepeat: useRepeat,
-        openedAt: performance.now(),
-      });
+      talkTo(npc);
       return;
     }
-
     const h = honouredAt(nx, ny);
     if (h) {
-      openHonouredDialogue(h);
+      sounds.talk();
+      setDialogue(openDialogue(honouredNPC(h)));
       return;
     }
+    if (warpAt(map, nx, ny)) return;
+    const msg =
+      map.tiles[ny]?.[nx] === "hallOfFame" && honouredRef.current
+        ? `CSC Hall of Fame. ${honouredRef.current.name}: caught a legendary Compileon.`
+        : examineMessage(map, nx, ny);
+    if (msg) showToast(msg);
+  }, [advanceDialogue, dialogueRef, honouredAt, honouredRef, npcAt, overlayOpenRef, showToast, talkTo]);
 
-    // Look at whatever you're facing (doors you can enter are left alone).
-    if (!warpAt(map, nx, ny)) {
-      const tile = map.tiles[ny]?.[nx];
-      const msg =
-        tile === "hallOfFame" && honouredRef.current
-          ? `CSC Hall of Fame. ${honouredRef.current.name}: caught a legendary Compileon.`
-          : examineMessage(map, nx, ny);
-      if (msg) showToast(msg);
-    }
-  }, [advanceDialogue, honouredAt, npcAt, openHonouredDialogue, showToast]);
+  // ============ KEYBOARD ============
 
-  // Keyboard
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      // Let text fields (the trainer-name input) receive keys normally.
+      // Let the name box receive keys normally.
       const target = e.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable)
-      ) {
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
         return;
       }
       const k = e.key.toLowerCase();
-      if (
-        ["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d", " ", "e", "enter"].includes(k)
-      ) {
-        e.preventDefault();
-      }
-      keysRef.current.add(k);
-      if (
-        battleRef.current ||
-        faintedRef.current ||
-        showNamePromptRef.current ||
-        playerNameRef.current === null
-      )
-        return;
-      if (k === " " || k === "e" || k === "enter") interact();
+      if (!GAME_KEYS.has(k)) return;
+      e.preventDefault();
+      keys.current.add(k);
+      // Holding the action key shouldn't skip through a whole conversation.
+      if (ACTION_KEYS.includes(k) && !e.repeat) interact();
     };
-    const up = (e: KeyboardEvent) => {
-      keysRef.current.delete(e.key.toLowerCase());
-    };
+    const up = (e: KeyboardEvent) => keys.current.delete(e.key.toLowerCase());
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
     return () => {
@@ -710,14 +657,90 @@ const ExploreGame = () => {
     };
   }, [interact]);
 
-  // Canvas sizing
+  const pressDir = useCallback((dir: TouchDir) => keys.current.add(TOUCH_KEY[dir]), []);
+  const releaseDir = useCallback((dir: TouchDir) => keys.current.delete(TOUCH_KEY[dir]), []);
+
+  // ============ WORLD UPDATES ============
+
+  // Trains keep running while you're indoors. On campus they stop rather
+  // than run through the player.
+  const updateTrains = useCallback((now: number, dt: number) => {
+    const width = MAPS.campus.width;
+    const p = player.current;
+    const onCampus = mapIdRef.current === "campus";
+    for (const t of trains.current) {
+      if (!t.running) {
+        if (now >= t.idleUntil) {
+          t.running = true;
+          t.x = t.dir === 1 ? -TRAIN_LENGTH - 1 : width + 1;
+          if (onCampus && Math.abs(p.tileY - t.row) <= TRAIN_BELL_RANGE) sounds.trainBell();
+        }
+        continue;
+      }
+      // Columns the player covers on this track, including the tile they're stepping off.
+      const playerColumns: number[] = [];
+      if (onCampus) {
+        if (p.tileY === t.row) playerColumns.push(p.tileX);
+        if (p.moving && p.fromY === t.row) playerColumns.push(p.fromX);
+      }
+      const nx = t.x + (t.dir * TRAIN_SPEED * dt) / 1000;
+      if (!playerColumns.some((col) => nx < col + 1 && nx + TRAIN_LENGTH > col)) t.x = nx;
+      if (t.dir === 1 ? t.x > width + 1 : t.x + TRAIN_LENGTH < -1) {
+        t.running = false;
+        t.idleUntil = now + randomTrainIdle();
+      }
+    }
+  }, []);
+
+  // Wanderers stroll inside their area. A step in progress always finishes,
+  // but new steps only start while the game isn't paused.
+  const updateNPCs = useCallback(
+    (now: number, allowNewMoves: boolean) => {
+      const mapId = mapIdRef.current;
+      const map = MAPS[mapId];
+      for (const n of npcsOnMap(mapId)) {
+        const area = n.wander;
+        if (!area) continue;
+        const s = npcStates.current[n.id];
+        if (s.moving) {
+          if (now - s.moveStart >= NPC_MOVE_MS) s.moving = false;
+          continue;
+        }
+        if (!allowNewMoves || now < s.nextMoveAt) continue;
+        s.nextMoveAt = now + NPC_PAUSE_MIN_MS + Math.random() * (NPC_PAUSE_MAX_MS - NPC_PAUSE_MIN_MS);
+        const dir = Math.floor(Math.random() * 4) as Direction;
+        s.facing = dir;
+        if (Math.random() < NPC_LOOK_AROUND_CHANCE) continue;
+
+        const nx = s.tileX + DIRS[dir].dx;
+        const ny = s.tileY + DIRS[dir].dy;
+        const tile = map.tiles[ny]?.[nx];
+        const allowed =
+          nx >= area.x &&
+          nx < area.x + area.w &&
+          ny >= area.y &&
+          ny < area.y + area.h &&
+          tile !== undefined &&
+          !isSolid(tile) &&
+          !isTallGrass(tile) &&
+          tile !== "trackCrossing" &&
+          !WARP_FRONTS[mapId].has(`${nx},${ny}`) &&
+          !(mapId === "campus" && nx === SPAWN.x && ny === SPAWN.y) &&
+          !occupies(player.current, nx, ny) &&
+          !npcAt(nx, ny, mapId);
+        if (allowed) startStep(s, nx, ny, now);
+      }
+    },
+    [npcAt]
+  );
+
+  // ============ CANVAS ============
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const resize = () => {
-      // Cap DPR at 1.5: the art is chunky pixel art, so higher density just
-      // burns fill-rate and causes choppiness on mobile with no visual gain.
-      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
       canvas.width = Math.floor(window.innerWidth * dpr);
       canvas.height = Math.floor(window.innerHeight * dpr);
       canvas.style.width = `${window.innerWidth}px`;
@@ -733,450 +756,231 @@ const ExploreGame = () => {
     return () => window.removeEventListener("resize", resize);
   }, []);
 
-  // Move the ION trains. They keep running while you're indoors, but only
-  // stop for the player when the player is on campus.
-  const updateTrains = useCallback((now: number, dt: number) => {
-    const width = MAPS.campus.width;
-    const p = playerRef.current;
-    const onCampus = mapIdRef.current === "campus";
-    for (const t of trainsRef.current!) {
-      if (!t.running) {
-        if (now >= t.idleUntil) {
-          t.running = true;
-          t.x = t.dir === 1 ? -TRAIN_LENGTH - 1 : width + 1;
-          if (onCampus && Math.abs(p.tileY - t.row) <= TRAIN_BELL_RANGE) sounds.trainBell();
-        }
-        continue;
-      }
-      // Columns the player occupies on this track (both ends of a step in progress).
-      const blocked: number[] = [];
-      if (onCampus) {
-        if (p.tileY === t.row) blocked.push(p.tileX);
-        if (p.moving && p.fromY === t.row) blocked.push(p.fromX);
-      }
-      const nx = t.x + (t.dir * TRAIN_SPEED * dt) / 1000;
-      const wouldHit = blocked.some((bx) => nx < bx + 1 && nx + TRAIN_LENGTH > bx);
-      if (!wouldHit) t.x = nx;
-      const done = t.dir === 1 ? t.x > width + 1 : t.x + TRAIN_LENGTH < -1;
-      if (done) {
-        t.running = false;
-        t.idleUntil = now + randomIdle();
-      }
-    }
-  }, []);
+  // ============ GAME LOOP ============
 
-  // Students with a wander area stroll around it. Steps already in progress
-  // always finish; new steps only start when the game isn't paused.
-  const updateNPCs = useCallback(
-    (now: number, allowNewMoves: boolean) => {
-      const mapId = mapIdRef.current;
-      const map = MAPS[mapId];
-      const p = playerRef.current;
-      for (const n of npcsOnMap(mapId)) {
-        const area = n.wander;
-        if (!area) continue;
-        const s = npcStateRef.current![n.id];
-        if (s.moving) {
-          if (now - s.moveStart >= NPC_MOVE_MS) {
-            s.moving = false;
-            s.fromX = s.toX;
-            s.fromY = s.toY;
-          }
-          continue;
-        }
-        if (!allowNewMoves || now < s.nextMoveAt) continue;
-        s.nextMoveAt = now + NPC_PAUSE_MIN_MS + Math.random() * (NPC_PAUSE_MAX_MS - NPC_PAUSE_MIN_MS);
-        const dir = Math.floor(Math.random() * 4) as Direction;
-        s.facing = dir;
-        if (Math.random() < NPC_LOOK_AROUND_CHANCE) continue;
-
-        const { dx, dy } = DIRS[dir];
-        const nx = s.tileX + dx;
-        const ny = s.tileY + dy;
-        if (nx < area.x || nx >= area.x + area.w || ny < area.y || ny >= area.y + area.h) continue;
-        const tile = map.tiles[ny]?.[nx];
-        if (tile === undefined || isSolid(tile) || isTallGrass(tile) || tile === "trackCrossing") {
-          continue;
-        }
-        if (WARP_FRONTS[mapId].has(`${nx},${ny}`)) continue;
-        if (mapId === "campus" && nx === SPAWN.x && ny === SPAWN.y) continue;
-        const playerThere =
-          (p.tileX === nx && p.tileY === ny) || (p.moving && p.fromX === nx && p.fromY === ny);
-        if (playerThere || npcAt(nx, ny, mapId)) continue;
-
-        s.fromX = s.tileX;
-        s.fromY = s.tileY;
-        s.toX = nx;
-        s.toY = ny;
-        s.tileX = nx;
-        s.tileY = ny;
-        s.moveStart = now;
-        s.moving = true;
-        s.walkFrame = s.walkFrame === 0 ? 1 : 0;
-      }
-    },
-    [npcAt]
-  );
-
-  // Main render loop
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
+    const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
-    ctx.imageSmoothingEnabled = false;
 
     let raf = 0;
     let lastAnimTick = 0;
     let lastFrame = performance.now();
 
     const loop = (now: number) => {
-      // Clamp the frame time so a background tab doesn't teleport the trains.
-      const dt = Math.min(now - lastFrame, 50);
+      const dt = Math.min(now - lastFrame, MAX_FRAME_MS);
       lastFrame = now;
-      const p = playerRef.current;
+      const p = player.current;
       const map = MAPS[mapIdRef.current];
       const onCampus = map.id === "campus";
 
-      if (now - lastAnimTick > 400) {
-        animFrameRef.current = (animFrameRef.current + 1) % 2;
+      if (now - lastAnimTick > ANIM_TICK_MS) {
+        animFrame.current = (animFrame.current + 1) % 2;
         lastAnimTick = now;
       }
 
-      const blocked =
-        !!dialogueRef.current ||
-        !!battleRef.current ||
-        faintedRef.current ||
-        showNamePromptRef.current ||
-        playerNameRef.current === null ||
-        fadingRef.current;
-
-      if (!p.moving && !blocked) {
-        const keys = keysRef.current;
-        if (keys.has("arrowup") || keys.has("w")) tryMove(1);
-        else if (keys.has("arrowdown") || keys.has("s")) tryMove(0);
-        else if (keys.has("arrowleft") || keys.has("a")) tryMove(2);
-        else if (keys.has("arrowright") || keys.has("d")) tryMove(3);
+      if (p.moving && now - p.moveStart >= MOVE_MS) {
+        p.moving = false;
+        if (isTallGrass(map.tiles[p.tileY][p.tileX]) && Math.random() < ENCOUNTER_CHANCE) startEncounter();
       }
-
-      let renderX = p.tileX;
-      let renderY = p.tileY;
-      if (p.moving) {
-        const t = Math.min(1, (now - p.moveStart) / MOVE_MS);
-        renderX = p.fromX + (p.toX - p.fromX) * t;
-        renderY = p.fromY + (p.toY - p.fromY) * t;
-        if (t >= 1) {
-          p.moving = false;
-          p.fromX = p.toX;
-          p.fromY = p.toY;
-          onStepComplete();
-        }
+      if (!p.moving && !overlayOpenRef.current && !fadingRef.current) {
+        const held = MOVE_KEYS.find(([, ks]) => ks.some((k) => keys.current.has(k)));
+        if (held) tryMove(held[0]);
       }
+      const paused = overlayOpenRef.current || fadingRef.current;
 
       updateTrains(now, dt);
-      updateNPCs(now, !blocked);
+      updateNPCs(now, !paused);
 
-      // Camera: follow the player, clamp to the map, centre small maps.
-      const logicalW = window.innerWidth;
-      const logicalH = window.innerHeight;
-      const viewTilesW = logicalW / TILE_SIZE;
-      const viewTilesH = logicalH / TILE_SIZE;
-      let camX = renderX - viewTilesW / 2 + 0.5;
-      let camY = renderY - viewTilesH / 2 + 0.5;
-      camX = Math.max(0, Math.min(map.width - viewTilesW, camX));
-      camY = Math.max(0, Math.min(map.height - viewTilesH, camY));
-      if (map.width < viewTilesW) camX = (map.width - viewTilesW) / 2;
-      if (map.height < viewTilesH) camY = (map.height - viewTilesH) / 2;
-      // Round the camera offset so the tile grid stays pixel-aligned (avoids
-      // seams between blitted tiles) while the player still glides smoothly.
+      // Camera follows the player, stops at the map edges, and centres maps
+      // smaller than the screen. Rounding keeps the tiles pixel-aligned.
+      const pos = renderPosition(p, now, MOVE_MS);
+      const viewW = window.innerWidth;
+      const viewH = window.innerHeight;
+      const tilesW = viewW / TILE_SIZE;
+      const tilesH = viewH / TILE_SIZE;
+      const camX =
+        map.width < tilesW
+          ? (map.width - tilesW) / 2
+          : Math.max(0, Math.min(map.width - tilesW, pos.x - tilesW / 2 + 0.5));
+      const camY =
+        map.height < tilesH
+          ? (map.height - tilesH) / 2
+          : Math.max(0, Math.min(map.height - tilesH, pos.y - tilesH / 2 + 0.5));
       const camPxX = Math.round(camX * TILE_SIZE);
       const camPxY = Math.round(camY * TILE_SIZE);
+      const sx = (tx: number) => tx * TILE_SIZE - camPxX;
+      const sy = (ty: number) => ty * TILE_SIZE - camPxY;
 
       ctx.fillStyle = map.background;
-      ctx.fillRect(0, 0, logicalW, logicalH);
+      ctx.fillRect(0, 0, viewW, viewH);
 
       const startTx = Math.max(0, Math.floor(camX) - 1);
-      const endTx = Math.min(map.width, Math.ceil(camX + viewTilesW) + 1);
+      const endTx = Math.min(map.width, Math.ceil(camX + tilesW) + 1);
       const startTy = Math.max(0, Math.floor(camY) - 1);
-      const endTy = Math.min(map.height, Math.ceil(camY + viewTilesH) + 1);
-      const visible = (x: number, y: number) =>
-        x >= startTx - 1 && x <= endTx && y >= startTy - 1 && y <= endTy;
+      const endTy = Math.min(map.height, Math.ceil(camY + tilesH) + 1);
+      const visible = (x: number, y: number) => x >= startTx - 1 && x <= endTx && y >= startTy - 1 && y <= endTy;
 
       for (let ty = startTy; ty < endTy; ty++) {
         for (let tx = startTx; tx < endTx; tx++) {
           const tile = map.tiles[ty][tx];
-          const b = tile.startsWith("building") ? buildingAt(map, tx, ty) : undefined;
-          drawTileCached(
-            ctx,
-            tile,
-            tx * TILE_SIZE - camPxX,
-            ty * TILE_SIZE - camPxY,
-            animFrameRef.current,
-            b
-          );
+          const building = tile.startsWith("building") ? buildingAt(map, tx, ty) : undefined;
+          drawTileCached(ctx, tile, sx(tx), sy(ty), animFrame.current, building);
         }
       }
+      for (const b of map.buildings) drawBuildingLabel(ctx, b, camPxX, camPxY);
+      for (const l of map.labels) drawMapLabel(ctx, l.x, l.y, l.text, l.accent, camPxX, camPxY);
 
-      for (const b of map.buildings) {
-        if (b.x + b.w >= startTx && b.x < endTx && b.y + b.h >= startTy && b.y < endTy) {
-          drawBuildingLabel(ctx, b, camPxX, camPxY);
-        }
-      }
-      for (const l of map.labels) {
-        drawMapLabel(ctx, l.x, l.y, l.text, l.accent, camPxX, camPxY);
-      }
-
-      // Crossing lights flash while either train is close to that crossing.
-      const trains = trainsRef.current!;
-      const leftLit = Math.floor(now / 400) % 2 === 0;
+      const leftLampLit = Math.floor(now / ANIM_TICK_MS) % 2 === 0;
       for (const cb of map.crossbucks) {
-        if (!visible(cb.x, cb.y)) continue;
-        if (trains.some((t) => trainNear(t, cb.crossingX, TRAIN_LIGHTS_MARGIN))) {
-          drawCrossingLights(ctx, cb.x * TILE_SIZE - camPxX, cb.y * TILE_SIZE - camPxY, leftLit);
+        if (visible(cb.x, cb.y) && trains.current.some((t) => trainNear(t, cb.crossingX, TRAIN_LIGHTS_MARGIN))) {
+          drawCrossingLights(ctx, sx(cb.x), sy(cb.y), leftLampLit);
         }
       }
 
-      // Trains and characters are drawn sorted by row so that whatever is
-      // further south is drawn in front.
-      const drawables: { y: number; draw: () => void }[] = [];
-      const isFacingPlayer = (x: number, y: number) => {
-        const dx = x - p.tileX;
-        const dy = y - p.tileY;
-        return (
-          (dx === 0 && dy === 1 && p.facing === 0) ||
-          (dx === 0 && dy === -1 && p.facing === 1) ||
-          (dx === -1 && dy === 0 && p.facing === 2) ||
-          (dx === 1 && dy === 0 && p.facing === 3)
-        );
-      };
+      // Trains and characters are drawn by row, so whatever is further south
+      // appears in front.
+      const sprites: { y: number; draw: () => void }[] = [];
+      const facedByPlayer = (x: number, y: number) =>
+        !paused && x === p.tileX + DIRS[p.facing].dx && y === p.tileY + DIRS[p.facing].dy;
 
       if (onCampus) {
-        for (const t of trains) {
-          if (!t.running) continue;
-          drawables.push({
-            y: t.row + 0.5,
-            draw: () =>
-              drawTrain(
-                ctx,
-                t.x * TILE_SIZE - camPxX,
-                t.row * TILE_SIZE - camPxY,
-                TRAIN_LENGTH,
-                t.dir
-              ),
-          });
+        for (const t of trains.current) {
+          if (t.running) {
+            sprites.push({ y: t.row + 0.5, draw: () => drawTrain(ctx, sx(t.x), sy(t.row), TRAIN_LENGTH, t.dir) });
+          }
         }
       }
 
       for (const npc of npcsOnMap(map.id)) {
         if (npc.hideAfterGift && giftGiven.current.has(npc.id)) continue;
-        const s = npcStateRef.current![npc.id];
-        let nx = s.tileX;
-        let ny = s.tileY;
-        if (s.moving) {
-          const t = Math.min(1, (now - s.moveStart) / NPC_MOVE_MS);
-          nx = s.fromX + (s.toX - s.fromX) * t;
-          ny = s.fromY + (s.toY - s.fromY) * t;
-        }
-        if (!visible(nx, ny)) continue;
-        drawables.push({
-          y: ny,
+        const s = npcStates.current[npc.id];
+        const at = renderPosition(s, now, NPC_MOVE_MS);
+        if (!visible(at.x, at.y)) continue;
+        sprites.push({
+          y: at.y,
           draw: () => {
-            const npx = nx * TILE_SIZE - camPxX;
-            const npy = ny * TILE_SIZE - camPxY;
-            const species = npc.speciesId ? SPECIES[npc.speciesId] : undefined;
-            if (npc.sprite === "pokemon" && species) {
-              const bob = Math.sin(now / 350) * 1.5;
-              drawPokemon(ctx, npx, npy + bob, TILE_SIZE, species);
+            const x = sx(at.x);
+            const y = sy(at.y);
+            if (npc.speciesId) {
+              drawPokemon(ctx, x, y + Math.sin(now / 350) * 1.5, TILE_SIZE, SPECIES[npc.speciesId]);
             } else {
-              drawCharacter(
-                ctx,
-                npx,
-                npy,
-                npc.color,
-                npc.hair,
-                s.facing,
-                s.moving ? s.walkFrame : 0,
-                null,
-                npc.outfit ?? "casual"
-              );
+              drawCharacter(ctx, x, y, npc.color, npc.hair, s.facing, s.moving ? s.walkFrame : 0, npc.outfit);
             }
-            if (!blocked && isFacingPlayer(s.tileX, s.tileY)) {
-              drawHint(ctx, npx + TILE_SIZE / 2, npy - 6, now);
-            } else if (npc.trainer && !defeatedTrainers.current.has(npc.id)) {
-              // A Pokeball over trainers who still want to battle
-              drawTrainerBadge(ctx, npx + TILE_SIZE / 2, npy - 6, now);
+            if (facedByPlayer(s.tileX, s.tileY)) drawHint(ctx, x + TILE_SIZE / 2, y - 6, now);
+            else if (npc.trainer && !defeatedTrainers.current.has(npc.id)) {
+              drawTrainerBadge(ctx, x + TILE_SIZE / 2, y - 6, now);
             }
           },
         });
       }
 
-      // The honoured trainer, standing on the Hall of Fame pedestal.
       const h = honouredRef.current;
       if (h && map.id === "csc") {
-        const hx = HALL_OF_FAME_SPOT.x;
-        const hy = HALL_OF_FAME_SPOT.y;
-        drawables.push({
+        const { x: hx, y: hy } = HALL_OF_FAME_SPOT;
+        sprites.push({
           y: hy,
           draw: () => {
-            const npx = hx * TILE_SIZE - camPxX;
-            const npy = hy * TILE_SIZE - camPxY - 6; // raised onto the pedestal
-            drawSparkles(ctx, npx + TILE_SIZE / 2, npy + TILE_SIZE / 2, now);
-            drawCharacter(ctx, npx, npy, HONOURED_SHIRT, HONOURED_HAIR, 0, 0, null, HONOURED_OUTFIT);
-            drawNameLabel(ctx, npx + TILE_SIZE / 2, npy - 4, h.name, "#facc15");
-            if (!blocked && isFacingPlayer(hx, hy)) {
-              drawHint(ctx, npx + TILE_SIZE / 2, npy - 20, now);
-            }
+            const x = sx(hx);
+            const y = sy(hy) - 6; // standing up on the pedestal
+            drawSparkles(ctx, x + TILE_SIZE / 2, y + TILE_SIZE / 2, now);
+            drawCharacter(ctx, x, y, HONOURED_LOOK.shirt, HONOURED_LOOK.hair, 0, 0, "trainer");
+            drawNameLabel(ctx, x + TILE_SIZE / 2, y - 4, h.name, "#facc15");
+            if (facedByPlayer(hx, hy)) drawHint(ctx, x + TILE_SIZE / 2, y - 20, now);
           },
         });
       }
 
-      drawables.push({
-        y: renderY,
+      sprites.push({
+        y: pos.y,
         draw: () => {
-          const playerPx = renderX * TILE_SIZE - camPxX;
-          const playerPy = renderY * TILE_SIZE - camPxY;
-          drawCharacter(
-            ctx,
-            playerPx,
-            playerPy,
-            "#0891b2",
-            "#0f172a",
-            p.facing,
-            p.moving ? p.walkFrame : 0,
-            null,
-            "trainer"
-          );
-          // Player's name above their head (white, so it stands out from NPC labels)
-          if (playerNameRef.current) {
-            drawNameLabel(ctx, playerPx + TILE_SIZE / 2, playerPy - 4, playerNameRef.current, "#ffffff");
-          }
+          const x = sx(pos.x);
+          const y = sy(pos.y);
+          drawCharacter(ctx, x, y, "#0891b2", "#0f172a", p.facing, p.moving ? p.walkFrame : 0, "trainer");
+          const name = playerNameRef.current;
+          if (name) drawNameLabel(ctx, x + TILE_SIZE / 2, y - 4, name, "#ffffff");
         },
       });
 
-      drawables.sort((a, b) => a.y - b.y);
-      for (const d of drawables) d.draw();
+      sprites.sort((a, b) => a.y - b.y);
+      for (const s of sprites) s.draw();
 
       raf = requestAnimationFrame(loop);
     };
 
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [tryMove, onStepComplete, updateTrains, updateNPCs]);
+  }, [honouredRef, overlayOpenRef, playerNameRef, startEncounter, tryMove, updateNPCs, updateTrains]);
+
+  // ============ BATTLE RESULTS ============
 
   const handleBattleEnd = useCallback(
-    (r: "win" | "lose", leveledUp: string[]) => {
-      // Level-ups were rolled and announced on the battle screen; apply them first.
-      const leveled = new Set(leveledUp);
-      const levelAfter = (p: Pokemon) =>
-        leveled.has(p.uid) ? Math.min(MAX_LEVEL, p.level + 1) : p.level;
+    (result: "win" | "lose", leveledUpUids: string[]) => {
+      if (!battle) return;
+      const leveled = new Set(leveledUpUids);
+      const levelAfter = (p: Pokemon) => (leveled.has(p.uid) ? Math.min(MAX_LEVEL, p.level + 1) : p.level);
       if (leveled.size > 0) {
         setTeam((prev) => prev.map((p) => (leveled.has(p.uid) ? { ...p, level: levelAfter(p) } : p)));
       }
+      setBattle(null);
 
-      // Trainer battle: no catching. Win a Repel Spray; losing just means a
-      // rematch later (you stay where you are).
-      if (battle?.trainer?.trainer) {
-        const npc = battle.trainer;
-        const info = npc.trainer!;
-        if (r === "win") {
-          defeatedTrainers.current.add(npc.id);
+      // Trainers give a Repel Spray when beaten. Losing to one just means a
+      // rematch later, so the player stays where they are.
+      const { trainer, opponent } = battle;
+      if (trainer?.trainer) {
+        if (result === "win") {
+          defeatedTrainers.current.add(trainer.id);
           setRepels((n) => n + 1);
           sounds.give();
           showToast("Got a Repel Spray!");
         }
-        setBattle(null);
-        setDialogue({
-          npc,
-          line: 0,
-          extraLines: r === "win" ? info.winLines : info.loseLines,
-          choiceShown: false,
-          finished: false,
-          isRepeat: false,
-          openedAt: performance.now(),
-        });
+        const lines = result === "win" ? trainer.trainer.winLines : trainer.trainer.loseLines;
+        setDialogue(openDialogue(trainer, { extraLines: lines }));
         return;
       }
-      if (r === "win" && battle) {
-        const name = battle.wild.species.name;
-        const existing = teamRef.current.find((p) => p.species.id === battle.wild.species.id);
-        setTeam((prev) => addToTeam(prev, battle.wild));
-        const legendaryNote =
-          battle.wild.species.isLegendary && !legendaryReviewedRef.current
-            ? " It's a legendary! Show it to Vardaan outside E7."
-            : battle.wild.species.isLegendary
-              ? " It's a legendary!"
-              : "";
-        showToast(
-          existing
-            ? `Caught another ${name}! Your ${name} is now Lv ${Math.min(MAX_LEVEL, levelAfter(existing) + battle.wild.level)}.${legendaryNote}`
-            : `Caught ${name} (Lv ${battle.wild.level})!${legendaryNote}`
-        );
-      } else if (r === "lose") {
+
+      if (result === "lose") {
         showToast("You lost the battle. Returning to spawn.");
         respawn();
-      }
-      setBattle(null);
-    },
-    [battle, respawn, showToast]
-  );
-
-  const handleTradeForRepellent = useCallback(
-    (traded: Pokemon) => {
-      if (traded.species.isLegendary) {
-        showToast("You can't trade a legendary!");
         return;
       }
-      // Gifts are one-time, so an empty team could never get a Pokemon again.
-      if (teamRef.current.length <= 1) {
-        showToast("You can't trade your last Pokemon!");
-        return;
-      }
-      setTeam((prev) => prev.filter((p) => p.uid !== traded.uid));
-      setRepellentExpires(Date.now() + REPELLENT_MS);
-      sounds.give();
-      showToast(`Traded ${traded.species.name} for Repel Spray!`);
+      const name = opponent.species.name;
+      const existing = teamRef.current.find((p) => p.species.id === opponent.species.id);
+      setTeam((prev) => addToTeam(prev, opponent));
+      const legendaryNote = !opponent.species.isLegendary
+        ? ""
+        : legendaryReviewed.current
+          ? " It's a legendary!"
+          : " It's a legendary! Show it to Vardaan outside E7.";
+      showToast(
+        existing
+          ? `Caught another ${name}! Your ${name} is now Lv ${Math.min(MAX_LEVEL, levelAfter(existing) + opponent.level)}.${legendaryNote}`
+          : `Caught ${name} (Lv ${opponent.level})!${legendaryNote}`
+      );
     },
-    [showToast]
+    [battle, respawn, showToast, teamRef]
   );
 
-  // Using a spray while one is active adds another 30 seconds.
-  const handleUseRepel = useCallback(() => {
-    if (repelsRef.current <= 0) return;
-    setRepels((n) => n - 1);
-    const now = Date.now();
-    setRepellentExpires((prev) => Math.max(prev ?? 0, now) + REPELLENT_MS);
-    sounds.select();
-    showToast("Used a Repel Spray. Wild Pokemon will stay away for 30 seconds.");
-  }, [showToast]);
-
-  // After Vardaan's legendary review: put the trainer in the Hall of Fame.
-  const handleHonourSubmit = useCallback(
+  const honourTrainer = useCallback(
     (name: string) => {
       setHonoured({ name });
-      setShowNamePrompt(false);
+      setAskingHonourName(false);
       sounds.honour();
       showToast(`${name} is in the CSC Hall of Fame! Visit the CSC office in MC.`);
     },
     [showToast]
   );
 
-  const toggleMute = () => {
-    const m = sounds.toggle();
-    setMuted(m);
-  };
-
   return (
     <div className="fixed inset-0 bg-slate-950 overflow-hidden select-none">
       <canvas ref={canvasRef} className="block w-full h-full" />
 
-      {/* Fade used when walking through a door */}
       <div
         className="absolute inset-0 z-[15] bg-black pointer-events-none transition-opacity duration-200"
         style={{ opacity: fading ? 1 : 0 }}
       />
 
       <button
-        onClick={toggleMute}
+        onClick={() => setMuted(sounds.toggle())}
         className="absolute top-4 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-2 px-3 py-2 bg-slate-900/80 hover:bg-slate-800 text-white text-sm rounded-lg border border-slate-700 backdrop-blur-sm transition-colors"
         aria-label={muted ? "Unmute" : "Mute"}
       >
@@ -1185,10 +989,10 @@ const ExploreGame = () => {
 
       <PokemonHUD
         team={team}
-        repellentExpires={repellentExpires}
+        repelUntil={repelUntil}
         repels={repels}
-        onUseRepel={handleUseRepel}
-        onTradeForRepellent={handleTradeForRepellent}
+        onUseRepel={spendRepel}
+        onOpenTrade={() => setTrading(true)}
       />
 
       {!isTouch && (
@@ -1201,9 +1005,7 @@ const ExploreGame = () => {
         </div>
       )}
 
-      {fainted && (
-        <div className="absolute inset-0 z-20 bg-red-600/40 pointer-events-none animate-pulse" />
-      )}
+      {fainted && <div className="absolute inset-0 z-20 bg-red-600/40 pointer-events-none animate-pulse" />}
 
       {toast && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 max-w-[90vw] text-center bg-slate-900/95 border-2 border-yellow-400 rounded-lg px-4 py-2 text-yellow-200 text-sm font-mono shadow-lg animate-in fade-in slide-in-from-top-4 duration-200">
@@ -1212,24 +1014,20 @@ const ExploreGame = () => {
       )}
 
       {dialogue && (
-        <DialogueBox
-          state={dialogue}
-          playerName={playerName}
-          onAdvance={advanceDialogue}
-          onChoose={chooseOption}
-        />
+        <DialogueBox state={dialogue} playerName={playerName} onAdvance={advanceDialogue} onChoose={chooseOption} />
       )}
 
       {battle && (
         <BattleScreen
           team={battle.team}
-          wild={battle.wild}
+          opponent={battle.opponent}
           trainerName={battle.trainer?.name}
           onEnd={handleBattleEnd}
         />
       )}
 
-      {/* Opening screen: ask for the player's name before anything else. */}
+      {trading && <TradeModal team={team} onCancel={() => setTrading(false)} onConfirm={tradeForRepel} />}
+
       {playerName === null && (
         <NamePromptModal
           eyebrow="Welcome to UW"
@@ -1244,33 +1042,32 @@ const ExploreGame = () => {
         />
       )}
 
-      {showNamePrompt && (
+      {askingHonourName && (
         <NamePromptModal
           eyebrow="Vardaan asks"
           title="What name goes in the Hall of Fame?"
           footer="You'll be honoured in the CSC office inside MC."
           buttonLabel="Honour me"
           initialValue={playerName ?? ""}
-          onSubmit={handleHonourSubmit}
+          onSubmit={honourTrainer}
         />
       )}
 
       {tunnel && <TunnelOverlay caption={tunnel.caption} onDone={finishTunnel} />}
 
-      {/* On-screen controls for touch devices. Hidden during battle, name entry,
-          and dialogue (those have their own UI; tap the dialogue box to advance). */}
-      {isTouch && playerName !== null && !battle && !showNamePrompt && !dialogue && !tunnel && (
-        <TouchControls onPress={pressDir} onRelease={releaseDir} onAction={interact} />
-      )}
+      {isTouch && !overlayOpen && <TouchControls onPress={pressDir} onRelease={releaseDir} onAction={interact} />}
     </div>
   );
 };
 
+// ============ OVERLAY DRAWING ============
+
+// Bobbing "!" over whoever the player is facing.
 const drawHint = (ctx: CanvasRenderingContext2D, cx: number, cy: number, now: number) => {
-  const bob = Math.sin(now / 200) * 2;
+  const y = cy + Math.sin(now / 200) * 2;
   ctx.fillStyle = "#facc15";
   ctx.beginPath();
-  ctx.arc(cx, cy + bob, 7, 0, Math.PI * 2);
+  ctx.arc(cx, y, 7, 0, Math.PI * 2);
   ctx.fill();
   ctx.strokeStyle = "#1e293b";
   ctx.lineWidth = 1.5;
@@ -1279,21 +1076,21 @@ const drawHint = (ctx: CanvasRenderingContext2D, cx: number, cy: number, now: nu
   ctx.font = "bold 12px monospace";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("!", cx, cy + bob + 1);
+  ctx.fillText("!", cx, y + 1);
 };
 
-// Small bobbing Pokeball shown over trainers who still want to battle.
+// Bobbing Pokeball over trainers who still want to battle.
 const drawTrainerBadge = (ctx: CanvasRenderingContext2D, cx: number, cy: number, now: number) => {
   const y = cy + Math.sin(now / 300) * 1.5;
   const r = 6;
   ctx.save();
+  ctx.fillStyle = "#ef4444";
   ctx.beginPath();
   ctx.arc(cx, y, r, Math.PI, 0);
-  ctx.fillStyle = "#ef4444";
   ctx.fill();
+  ctx.fillStyle = "#ffffff";
   ctx.beginPath();
   ctx.arc(cx, y, r, 0, Math.PI);
-  ctx.fillStyle = "#ffffff";
   ctx.fill();
   ctx.strokeStyle = "#1e293b";
   ctx.lineWidth = 1.5;
@@ -1302,22 +1099,16 @@ const drawTrainerBadge = (ctx: CanvasRenderingContext2D, cx: number, cy: number,
   ctx.moveTo(cx - r, y);
   ctx.lineTo(cx + r, y);
   ctx.stroke();
+  ctx.fillStyle = "#ffffff";
   ctx.beginPath();
   ctx.arc(cx, y, 2, 0, Math.PI * 2);
-  ctx.fillStyle = "#ffffff";
   ctx.fill();
   ctx.stroke();
   ctx.restore();
 };
 
-// Small dark pill with a name in it, centered horizontally on cx, bottom at baseY.
-const drawNameLabel = (
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  baseY: number,
-  text: string,
-  color: string
-) => {
+// Dark pill with a name in it, centred on cx with its bottom at baseY.
+const drawNameLabel = (ctx: CanvasRenderingContext2D, cx: number, baseY: number, text: string, color: string) => {
   ctx.font = "bold 10px monospace";
   ctx.textAlign = "center";
   ctx.textBaseline = "bottom";
@@ -1333,13 +1124,13 @@ const drawSparkles = (ctx: CanvasRenderingContext2D, cx: number, cy: number, now
   for (let i = 0; i < 6; i++) {
     const a = now / 900 + (i * Math.PI * 2) / 6;
     const r = 18 + Math.sin(now / 400 + i) * 3;
-    const x = cx + Math.cos(a) * r;
-    const y = cy + Math.sin(a) * r * 0.6;
-    const s = 1.5 + ((Math.sin(now / 200 + i * 2) + 1) / 2) * 1.5;
+    const size = 1.5 + ((Math.sin(now / 200 + i * 2) + 1) / 2) * 1.5;
     ctx.fillStyle = i % 2 === 0 ? "#fde68a" : "#facc15";
-    ctx.fillRect(x - s / 2, y - s / 2, s, s);
+    ctx.fillRect(cx + Math.cos(a) * r - size / 2, cy + Math.sin(a) * r * 0.6 - size / 2, size, size);
   }
 };
+
+// ============ DIALOGUE BOX ============
 
 interface DialogueBoxProps {
   state: DialogueState;
@@ -1349,18 +1140,17 @@ interface DialogueBoxProps {
 }
 
 const DialogueBox = ({ state, playerName, onAdvance, onChoose }: DialogueBoxProps) => {
-  const currentLines = state.extraLines ?? state.npc.dialogue;
-  const isLast = state.line >= currentLines.length - 1;
-  const hasChoice = choiceAvailable(state);
-  const showingChoices = state.choiceShown;
-  const text = currentLines[state.line].split("{name}").join(playerName ?? "trainer");
+  const lines = state.extraLines ?? state.npc.dialogue;
+  const isLast = state.line >= lines.length - 1;
+  const text = lines[state.line].split("{name}").join(playerName ?? "trainer");
+  const choice = state.choiceShown ? state.npc.choice : undefined;
 
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-20 w-[min(92vw,760px)]">
       <div
-        onClick={!showingChoices ? onAdvance : undefined}
+        onClick={choice ? undefined : onAdvance}
         className={`bg-slate-950/95 border-4 border-slate-700 rounded-lg p-5 shadow-2xl backdrop-blur ${
-          !showingChoices ? "cursor-pointer" : ""
+          choice ? "" : "cursor-pointer"
         }`}
       >
         <div className="flex items-center gap-2 mb-2">
@@ -1370,13 +1160,13 @@ const DialogueBox = ({ state, playerName, onAdvance, onChoose }: DialogueBoxProp
         </div>
         <p className="text-slate-100 text-base leading-relaxed min-h-[3rem]">{text}</p>
 
-        {showingChoices && state.npc.choice ? (
+        {choice ? (
           <div className="mt-4 pt-3 border-t border-slate-700">
-            <p className="text-slate-400 text-xs mb-2">{state.npc.choice.question}</p>
+            <p className="text-slate-400 text-xs mb-2">{choice.question}</p>
             <div className="flex flex-wrap gap-2">
-              {state.npc.choice.options.map((o, i) => (
+              {choice.options.map((o, i) => (
                 <button
-                  key={i}
+                  key={o.label}
                   onClick={() => onChoose(i)}
                   className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 hover:border-yellow-400 text-white text-sm rounded transition-colors"
                 >
@@ -1388,7 +1178,7 @@ const DialogueBox = ({ state, playerName, onAdvance, onChoose }: DialogueBoxProp
         ) : (
           <div className="flex justify-end mt-2">
             <span className="text-slate-500 text-xs animate-pulse">
-              {isLast && !hasChoice ? "▸ close" : "▸ continue"}
+              {isLast && !choiceAvailable(state) ? "▸ close" : "▸ continue"}
             </span>
           </div>
         )}

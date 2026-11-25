@@ -1,37 +1,35 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
-export const MAX_NAME_LENGTH = 16;
+const MAX_NAME_LENGTH = 16;
 
 interface NamePromptModalProps {
-  onSubmit: (name: string) => void;
-  eyebrow?: string;
-  title?: string;
-  footer?: string;
-  buttonLabel?: string;
+  eyebrow: string;
+  title: string;
+  footer: string;
+  buttonLabel: string;
   initialValue?: string;
+  onSubmit: (name: string) => void;
 }
 
 const NamePromptModal = ({
-  onSubmit,
-  eyebrow = "Prof. Chen asks",
-  title = "What's your name, trainer?",
-  footer = "You'll appear on the map as a trainer.",
-  buttonLabel = "Confirm",
+  eyebrow,
+  title,
+  footer,
+  buttonLabel,
   initialValue = "",
+  onSubmit,
 }: NamePromptModalProps) => {
   const [name, setName] = useState(initialValue);
   const inputRef = useRef<HTMLInputElement>(null);
+  const trimmed = name.trim();
 
   useEffect(() => {
     inputRef.current?.focus();
     inputRef.current?.select();
   }, []);
 
-  const trimmed = name.trim();
-
   const submit = () => {
-    if (trimmed.length === 0 || trimmed.length > MAX_NAME_LENGTH) return;
-    onSubmit(trimmed);
+    if (trimmed) onSubmit(trimmed);
   };
 
   return (
@@ -59,7 +57,7 @@ const NamePromptModal = ({
         <div className="flex justify-center mt-4">
           <button
             onClick={submit}
-            disabled={trimmed.length === 0}
+            disabled={!trimmed}
             className="px-6 py-2 bg-yellow-500 hover:bg-yellow-400 disabled:bg-slate-700 disabled:cursor-not-allowed text-slate-950 font-bold rounded transition-colors"
           >
             {buttonLabel}

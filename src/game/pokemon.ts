@@ -1,4 +1,4 @@
-// Pokemon data: species definitions, encounters, battles, team management.
+// Species, wild encounters, battle rules, levelling and team management.
 
 export type PokemonType =
   | "electric"
@@ -17,7 +17,6 @@ export interface PokemonSpecies {
   primary: string;
   secondary: string;
   shape: "blob" | "bug" | "sparky" | "aqua" | "brick" | "leaf" | "goose" | "codey";
-  // Used to color the pokemon frame; overrides shape color when set.
   isLegendary?: boolean;
   // Only obtainable as a gift, so it can't grow by stacking duplicates.
   // These get a better chance to level up after a win.
@@ -31,13 +30,13 @@ export interface Pokemon {
 }
 
 export const SPECIES: Record<string, PokemonSpecies> = {
-  // Campus gifts
+  // Gifts
   honkling: {
     id: "honkling",
     name: "Honkling",
     type: "flying",
-    primary: "#8a7a66", // Canada goose brown-grey body
-    secondary: "#1a1a1a", // black head and neck
+    primary: "#8a7a66",
+    secondary: "#1a1a1a",
     shape: "goose",
     giftOnly: true,
   },
@@ -45,280 +44,127 @@ export const SPECIES: Record<string, PokemonSpecies> = {
     id: "codey",
     name: "Codey",
     type: "water",
-    primary: "#5aaff5", // CSC mascot blue
-    secondary: "#26285e", // navy glasses and eyes
+    primary: "#5aaff5",
+    secondary: "#26285e",
     shape: "codey",
     giftOnly: true,
   },
 
-  // Starters offered by Prof. Chen (no longer given out; kept for the next pass)
-  reactle: {
-    id: "reactle",
-    name: "Reactle",
-    type: "tech",
-    primary: "#22d3ee",
-    secondary: "#0e7490",
-    shape: "blob",
-  },
-  nodemin: {
-    id: "nodemin",
-    name: "Nodemin",
-    type: "grass",
-    primary: "#84cc16",
-    secondary: "#365314",
-    shape: "sparky",
-  },
-  cloudpup: {
-    id: "cloudpup",
-    name: "Cloudpup",
-    type: "water",
-    primary: "#94a3b8",
-    secondary: "#475569",
-    shape: "aqua",
-  },
+  // Wild
+  codeling: { id: "codeling", name: "Codeling", type: "tech", primary: "#38bdf8", secondary: "#0369a1", shape: "blob" },
+  leafling: { id: "leafling", name: "Leafling", type: "grass", primary: "#4ade80", secondary: "#166534", shape: "leaf" },
+  emberling: { id: "emberling", name: "Emberling", type: "fire", primary: "#fb923c", secondary: "#9a3412", shape: "blob" },
+  aquapaw: { id: "aquapaw", name: "Aquapaw", type: "water", primary: "#60a5fa", secondary: "#1e40af", shape: "aqua" },
+  sparkbee: { id: "sparkbee", name: "Sparkbee", type: "electric", primary: "#fde047", secondary: "#713f12", shape: "sparky" },
+  weedie: { id: "weedie", name: "Weedie", type: "grass", primary: "#84cc16", secondary: "#365314", shape: "leaf" },
+  skyling: { id: "skyling", name: "Skyling", type: "flying", primary: "#a5f3fc", secondary: "#0e7490", shape: "bug" },
+  rockjaw: { id: "rockjaw", name: "Rockjaw", type: "rock", primary: "#a8a29e", secondary: "#44403c", shape: "brick" },
 
-  // Wild-only (was a gift before the starter choice existed)
-  codeling: {
-    id: "codeling",
-    name: "Codeling",
-    type: "tech",
-    primary: "#38bdf8",
-    secondary: "#0369a1",
-    shape: "blob",
-  },
-  deploybug: {
-    id: "deploybug",
-    name: "Deploybug",
-    type: "tech",
-    primary: "#f472b6",
-    secondary: "#831843",
-    shape: "bug",
-  },
-  datamouse: {
-    id: "datamouse",
-    name: "Datamouse",
-    type: "electric",
-    primary: "#facc15",
-    secondary: "#854d0e",
-    shape: "sparky",
-  },
-  buildo: {
-    id: "buildo",
-    name: "Buildo",
-    type: "rock",
-    primary: "#a3a3a3",
-    secondary: "#3f3f46",
-    shape: "brick",
-  },
-  bytebit: {
-    id: "bytebit",
-    name: "Bytebit",
-    type: "tech",
-    primary: "#e879f9",
-    secondary: "#86198f",
-    shape: "brick",
-  },
-
-  // Wild-only pokemon
-  leafling: {
-    id: "leafling",
-    name: "Leafling",
-    type: "grass",
-    primary: "#4ade80",
-    secondary: "#166534",
-    shape: "leaf",
-  },
-  emberling: {
-    id: "emberling",
-    name: "Emberling",
-    type: "fire",
-    primary: "#fb923c",
-    secondary: "#9a3412",
-    shape: "blob",
-  },
-  aquapaw: {
-    id: "aquapaw",
-    name: "Aquapaw",
-    type: "water",
-    primary: "#60a5fa",
-    secondary: "#1e40af",
-    shape: "aqua",
-  },
-  sparkbee: {
-    id: "sparkbee",
-    name: "Sparkbee",
-    type: "electric",
-    primary: "#fde047",
-    secondary: "#713f12",
-    shape: "sparky",
-  },
-  weedie: {
-    id: "weedie",
-    name: "Weedie",
-    type: "grass",
-    primary: "#84cc16",
-    secondary: "#365314",
-    shape: "leaf",
-  },
-  // Flying-type wild
-  skyling: {
-    id: "skyling",
-    name: "Skyling",
-    type: "flying",
-    primary: "#a5f3fc",
-    secondary: "#0e7490",
-    shape: "bug",
-  },
-  // Rock-type wild
-  rockjaw: {
-    id: "rockjaw",
-    name: "Rockjaw",
-    type: "rock",
-    primary: "#a8a29e",
-    secondary: "#44403c",
-    shape: "brick",
-  },
-
-  // LEGENDARY — 1 in 30 wild encounter, always high-level
+  // Legendary
   compileon: {
     id: "compileon",
     name: "Compileon",
     type: "legendary",
-    primary: "#fde047", // brilliant gold
+    primary: "#fde047",
     secondary: "#78350f",
     shape: "sparky",
     isLegendary: true,
   },
 };
 
-export const WILD_POOL: string[] = [
-  "leafling",
-  "emberling",
-  "aquapaw",
-  "sparkbee",
-  "weedie",
-  "codeling",
-  "skyling",
-  "rockjaw",
-];
+const WILD_POOL = ["leafling", "emberling", "aquapaw", "sparkbee", "weedie", "codeling", "skyling", "rockjaw"];
+const LEGENDARY_ID = "compileon";
+const LEGENDARY_CHANCE = 1 / 30;
+const LEGENDARY_MIN_LEVEL = 12;
+const LEGENDARY_MAX_LEVEL = 19;
 
-export const LEGENDARY_POOL: string[] = ["compileon"];
-export const LEGENDARY_CHANCE = 1 / 30;
+const randomInt = (min: number, max: number) => min + Math.floor(Math.random() * (max - min + 1));
 
 let uidCounter = 1;
-export const makePokemon = (
-  speciesId: string,
-  levelOverride?: number
-): Pokemon => {
+export const makePokemon = (speciesId: string, level = randomInt(1, 10)): Pokemon => {
   const species = SPECIES[speciesId];
-  const level = levelOverride ?? randomLevel();
   return { species, level, uid: `${species.id}-${uidCounter++}` };
 };
 
-export const randomLevel = (): number => 1 + Math.floor(Math.random() * 10);
-
 export const rollWildEncounter = (): Pokemon => {
-  const isLegendary = Math.random() < LEGENDARY_CHANCE;
-  if (isLegendary) {
-    const id = LEGENDARY_POOL[Math.floor(Math.random() * LEGENDARY_POOL.length)];
-    const level = 12 + Math.floor(Math.random() * 8); // 12..19
-    return makePokemon(id, level);
+  if (Math.random() < LEGENDARY_CHANCE) {
+    return makePokemon(LEGENDARY_ID, randomInt(LEGENDARY_MIN_LEVEL, LEGENDARY_MAX_LEVEL));
   }
-  const id = WILD_POOL[Math.floor(Math.random() * WILD_POOL.length)];
-  return makePokemon(id);
+  return makePokemon(WILD_POOL[Math.floor(Math.random() * WILD_POOL.length)]);
 };
 
-// ============ TYPE MATCHUPS ============
-// Classic-Pokemon-inspired rock/paper/scissors relationships between types.
-// If yours has advantage vs the wild's type, yours gets a +5 effective-level boost.
-// Legendary overwhelms everything except another legendary.
-export const TYPE_ADVANTAGE: Record<PokemonType, PokemonType[]> = {
+// ============ BATTLES ============
+// Each matchup compares effective level: level plus a bonus if your type beats
+// theirs. Higher effective level wins, and ties go to the player.
+
+const STRONG_AGAINST: Record<PokemonType, PokemonType[]> = {
   fire: ["grass"],
   water: ["fire", "rock"],
   grass: ["water", "rock"],
   rock: ["fire", "flying"],
   flying: ["grass"],
   electric: ["water", "flying"],
-  tech: [], // neutral against everything
+  tech: [],
   legendary: ["electric", "fire", "water", "grass", "rock", "flying", "tech"],
 };
 
-const TYPE_BOOST = 5;
-const LEGENDARY_BOOST = 7;
+const TYPE_BONUS = 5;
+const LEGENDARY_BONUS = 7;
 
-const prettyType = (t: PokemonType): string =>
-  t.charAt(0).toUpperCase() + t.slice(1);
+const capitalize = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 
 export interface BattleOutcome {
   outcome: "win" | "lose";
-  advantage: "strong" | "weak" | "neutral";
-  explanation: string; // shown to the player in battle when non-empty
-  yourEffective: number;
-  wildEffective: number;
+  explanation: string; // why a type advantage applied, empty if none did
 }
 
-// Battle rule:
-//   effective = level + type-matchup boost
-//   higher effective level wins; ties go to the player.
-export const resolveBattle = (
-  yours: Pokemon,
-  wild: Pokemon
-): BattleOutcome => {
+export const resolveBattle = (yours: Pokemon, theirs: Pokemon): BattleOutcome => {
   const yourType = yours.species.type;
-  const wildType = wild.species.type;
-  let yourBoost = 0;
-  let wildBoost = 0;
-  let advantage: "strong" | "weak" | "neutral" = "neutral";
+  const theirType = theirs.species.type;
+  let yourBonus = 0;
+  let theirBonus = 0;
   let explanation = "";
 
-  if (TYPE_ADVANTAGE[yourType]?.includes(wildType)) {
-    advantage = "strong";
-    yourBoost = yourType === "legendary" ? LEGENDARY_BOOST : TYPE_BOOST;
+  if (STRONG_AGAINST[yourType].includes(theirType)) {
+    yourBonus = yourType === "legendary" ? LEGENDARY_BONUS : TYPE_BONUS;
     explanation =
       yourType === "legendary"
-        ? `${yours.species.name} is a legendary. Its power overwhelms ${wild.species.name}.`
-        : `${prettyType(yourType)} is strong against ${prettyType(wildType)}. ${yours.species.name} hits harder!`;
-  } else if (TYPE_ADVANTAGE[wildType]?.includes(yourType)) {
-    advantage = "weak";
-    wildBoost = wildType === "legendary" ? LEGENDARY_BOOST : TYPE_BOOST;
+        ? `${yours.species.name} is a legendary. Its power overwhelms ${theirs.species.name}.`
+        : `${capitalize(yourType)} is strong against ${capitalize(theirType)}. ${yours.species.name} hits harder!`;
+  } else if (STRONG_AGAINST[theirType].includes(yourType)) {
+    theirBonus = theirType === "legendary" ? LEGENDARY_BONUS : TYPE_BONUS;
     explanation =
-      wildType === "legendary"
-        ? `${wild.species.name} is a legendary. It'll take everything to bring it down.`
-        : `${prettyType(wildType)} is strong against ${prettyType(yourType)}. ${yours.species.name} struggles!`;
+      theirType === "legendary"
+        ? `${theirs.species.name} is a legendary. It'll take everything to bring it down.`
+        : `${capitalize(theirType)} is strong against ${capitalize(yourType)}. ${yours.species.name} struggles!`;
   }
 
-  const yourEffective = yours.level + yourBoost;
-  const wildEffective = wild.level + wildBoost;
-  const outcome = yourEffective >= wildEffective ? "win" : "lose";
-  return { outcome, advantage, explanation, yourEffective, wildEffective };
+  const outcome = yours.level + yourBonus >= theirs.level + theirBonus ? "win" : "lose";
+  return { outcome, explanation };
 };
 
-// ============ LEVELING UP ============
-// After a win, every Pokemon that fought (including ones that fainted before
-// the last one won) gets one roll to gain a level.
+// ============ LEVELLING ============
+
 export const MAX_LEVEL = 99;
-export const LEVEL_UP_CHANCE = 1 / 4;
-export const GIFT_ONLY_LEVEL_UP_CHANCE = 1 / 2;
+const LEVEL_UP_CHANCE = 1 / 4;
+const GIFT_ONLY_LEVEL_UP_CHANCE = 1 / 2;
 
-export const levelUpChance = (p: Pokemon): number =>
-  p.species.giftOnly ? GIFT_ONLY_LEVEL_UP_CHANCE : LEVEL_UP_CHANCE;
+// After a win, every Pokemon that fought rolls once to gain a level.
+// Returns the ones that do. `random` can be swapped out in tests.
+export const rollLevelUps = (participants: Pokemon[], random: () => number = Math.random): Pokemon[] =>
+  participants.filter(
+    (p) =>
+      p.level < MAX_LEVEL &&
+      random() < (p.species.giftOnly ? GIFT_ONLY_LEVEL_UP_CHANCE : LEVEL_UP_CHANCE)
+  );
 
-// Returns the participants that level up. `random` is injectable for testing.
-export const rollLevelUps = (
-  participants: Pokemon[],
-  random: () => number = Math.random
-): Pokemon[] =>
-  participants.filter((p) => p.level < MAX_LEVEL && random() < levelUpChance(p));
-
-// Adds a caught pokemon to the team. If a same-species pokemon already exists,
-// their levels stack (up to a soft cap of 99 so numbers stay readable).
+// Catching a species you already have adds its level to the one on your team.
 export const addToTeam = (team: Pokemon[], caught: Pokemon): Pokemon[] => {
-  const existingIdx = team.findIndex((p) => p.species.id === caught.species.id);
-  if (existingIdx === -1) return [...team, caught];
+  const existing = team.findIndex((p) => p.species.id === caught.species.id);
+  if (existing === -1) return [...team, caught];
   return team.map((p, i) =>
-    i === existingIdx ? { ...p, level: Math.min(MAX_LEVEL, p.level + caught.level) } : p
+    i === existing ? { ...p, level: Math.min(MAX_LEVEL, p.level + caught.level) } : p
   );
 };
 
-export const hasLegendary = (team: Pokemon[]): boolean =>
-  team.some((p) => p.species.isLegendary);
+export const hasLegendary = (team: Pokemon[]): boolean => team.some((p) => p.species.isLegendary);

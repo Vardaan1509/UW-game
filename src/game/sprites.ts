@@ -1,8 +1,7 @@
-// Procedurally-drawn sprites in a bright GBA-era overworld style.
-// All art is drawn from scratch in code — no external assets.
+// All game art, drawn in code in a bright Game Boy Advance overworld style.
 
-import { TILE_SIZE, TileType, Building } from "./world";
-import { PokemonSpecies } from "./pokemon";
+import { TILE_SIZE, type Building, type Direction, type TileType } from "./world";
+import type { PokemonSpecies } from "./pokemon";
 
 const PIX = TILE_SIZE / 10;
 
@@ -23,10 +22,8 @@ const P = (
 // ============ GRASS FAMILY ============
 
 const drawGrass = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
-  // Bright saturated GBA-style green base
   ctx.fillStyle = "#78c850";
   ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
-  // Dotted texture pattern (like the reference screenshot)
   const darker = "#5ea838";
   P(ctx, x, y, 1, 2, 1, 1, darker);
   P(ctx, x, y, 4, 1, 1, 1, darker);
@@ -35,7 +32,6 @@ const drawGrass = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
   P(ctx, x, y, 5, 6, 1, 1, darker);
   P(ctx, x, y, 8, 7, 1, 1, darker);
   P(ctx, x, y, 0, 8, 1, 1, darker);
-  // Occasional brighter highlight for depth
   P(ctx, x, y, 3, 3, 1, 1, "#98d868");
   P(ctx, x, y, 6, 8, 1, 1, "#98d868");
 };
@@ -81,14 +77,6 @@ const drawPath = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
   P(ctx, x, y, 8, 5, 1, 1, "#f0d888");
 };
 
-const drawDoorStep = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
-  drawGrass(ctx, x, y);
-  // Warm-glow doorstep like in the reference
-  P(ctx, x, y, 3, 3, 4, 4, "#f8e0a0");
-  P(ctx, x, y, 3, 3, 4, 1, "#f0c878");
-  P(ctx, x, y, 3, 6, 4, 1, "#d0a860");
-};
-
 const drawWater = (
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -108,7 +96,7 @@ const drawWater = (
 
 const drawTree = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
   drawGrass(ctx, x, y);
-  // Round bushy canopy — top-down view like the reference
+  // Round bushy canopy seen from above
   const dark = "#204818";
   const mid = "#386828";
   const light = "#588838";
@@ -135,7 +123,6 @@ const drawTree = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
 
 const drawFlower = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
   drawGrass(ctx, x, y);
-  // Red flower cluster like the reference screenshot
   const petal = "#e04848";
   const petalDark = "#a02020";
   const center = "#f8d038";
@@ -159,13 +146,12 @@ const drawSign = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
   drawGrass(ctx, x, y);
   // Post
   P(ctx, x, y, 4, 6, 2, 3, "#584038");
-  // Sign box — cool blue-grey like the mailboxes in the reference
+  // Blue-grey sign box with an envelope on the front
   P(ctx, x, y, 2, 2, 6, 5, "#9098b8");
   P(ctx, x, y, 2, 2, 6, 1, "#585878");
   P(ctx, x, y, 2, 6, 6, 1, "#585878");
   P(ctx, x, y, 2, 2, 1, 5, "#585878");
   P(ctx, x, y, 7, 2, 1, 5, "#585878");
-  // Envelope icon on the front
   P(ctx, x, y, 3, 3, 4, 3, "#f0f0f8");
   P(ctx, x, y, 3, 3, 4, 1, "#c8c8d0");
   P(ctx, x, y, 3, 3, 2, 2, "#c8c8d0");
@@ -186,7 +172,7 @@ const drawBuildingRoofTop = (
   ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
   // Dark outline on top
   P(ctx, x, y, 0, 0, 10, 1, shadow);
-  // Ridge tiles across the top (Pokemon-house style horizontal cap)
+  // Ridge tiles across the top
   P(ctx, x, y, 0, 1, 10, 2, shadow);
   P(ctx, x, y, 1, 2, 8, 1, roof);
   // Small highlight along the top
@@ -706,11 +692,11 @@ const drawRoyalCrest = (ctx: CanvasRenderingContext2D, x: number, y: number) => 
   P(ctx, x, y, 3.4, 3.4, 1.2, 0.8, ROYAL.goldLight);
   P(ctx, x, y, 4.4, 2.6, 1.2, 0.8, ROYAL.goldLight);
   P(ctx, x, y, 5.4, 3.4, 1.2, 0.8, ROYAL.goldLight);
-  // Tiny crown on top
-  P(ctx, x, y, 3.6, 0.2, 2.8, 0.6, ROYAL.goldLight);
-  P(ctx, x, y, 3.6, -0.2, 0.5, 0.5, ROYAL.goldLight);
-  P(ctx, x, y, 4.75, -0.3, 0.5, 0.6, ROYAL.goldLight);
-  P(ctx, x, y, 5.9, -0.2, 0.5, 0.5, ROYAL.goldLight);
+  // Small crown on top, kept inside the tile so the tile cache doesn't clip it
+  P(ctx, x, y, 3.6, 0.4, 2.8, 0.5, ROYAL.goldLight);
+  P(ctx, x, y, 3.6, 0, 0.5, 0.5, ROYAL.goldLight);
+  P(ctx, x, y, 4.75, 0, 0.5, 0.5, ROYAL.goldLight);
+  P(ctx, x, y, 5.9, 0, 0.5, 0.5, ROYAL.goldLight);
 };
 
 const drawMarble = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
@@ -795,14 +781,13 @@ const drawThrone = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
   drawDais(ctx, x, y);
   ctx.fillStyle = "rgba(0,0,0,0.2)";
   ctx.fillRect(x + 1.5 * PIX, y + 9 * PIX, 7 * PIX, PIX);
-  // Tall gold back with a red cushion
-  P(ctx, x, y, 2, 0, 6, 9.4, ROYAL.goldDark);
-  P(ctx, x, y, 2.4, 0.3, 5.2, 8.8, ROYAL.gold);
-  P(ctx, x, y, 3.2, 1.2, 3.6, 4.6, ROYAL.carpet);
-  P(ctx, x, y, 3.2, 1.2, 3.6, 0.6, ROYAL.carpetLight);
-  // Crown finial
-  P(ctx, x, y, 3.6, -0.4, 2.8, 0.8, ROYAL.goldLight);
-  P(ctx, x, y, 4.7, -0.9, 0.6, 0.6, "#e23b4e");
+  // Tall gold back with a red cushion and a crown finial with a ruby
+  P(ctx, x, y, 2, 0.8, 6, 8.6, ROYAL.goldDark);
+  P(ctx, x, y, 2.4, 1.1, 5.2, 8, ROYAL.gold);
+  P(ctx, x, y, 3.2, 1.8, 3.6, 4, ROYAL.carpet);
+  P(ctx, x, y, 3.2, 1.8, 3.6, 0.6, ROYAL.carpetLight);
+  P(ctx, x, y, 3.6, 0.3, 2.8, 0.8, ROYAL.goldLight);
+  P(ctx, x, y, 4.7, 0, 0.6, 0.6, "#e23b4e");
   // Seat and armrests
   P(ctx, x, y, 1.4, 5.8, 7.2, 1.4, ROYAL.gold);
   P(ctx, x, y, 2.6, 6.2, 4.8, 1.8, ROYAL.carpetDark);
@@ -916,17 +901,33 @@ const drawRoyalDoor = (ctx: CanvasRenderingContext2D, x: number, y: number, gran
 
 // ============ DISPATCH ============
 
-export const drawTile = (
+const DEFAULT_BUILDING_COLORS = {
+  roofColor: "#e88a4a",
+  roofShadow: "#a85220",
+  wallColor: "#f0dcb4",
+  wallShadow: "#a88860",
+};
+
+const drawTile = (
   ctx: CanvasRenderingContext2D,
   tile: TileType,
   x: number,
   y: number,
   animFrame: number,
-  buildingLookup?: (px: number, py: number) => Building | undefined,
-  tx?: number,
-  ty?: number
+  building?: Building
 ) => {
+  const b = building ?? DEFAULT_BUILDING_COLORS;
   switch (tile) {
+    case "buildingRoofTop":
+      return drawBuildingRoofTop(ctx, x, y, b.roofColor, b.roofShadow);
+    case "buildingRoofBase":
+      return drawBuildingRoofBase(ctx, x, y, b.roofColor, b.roofShadow);
+    case "buildingWall":
+      return drawBuildingWall(ctx, x, y, b.wallColor, b.wallShadow);
+    case "buildingWindow":
+      return drawBuildingWindow(ctx, x, y, b.wallColor, b.wallShadow);
+    case "buildingDoor":
+      return drawBuildingDoor(ctx, x, y, b.wallColor, b.wallShadow);
     case "grass":
       return drawGrass(ctx, x, y);
     case "grassTuft":
@@ -943,10 +944,6 @@ export const drawTile = (
       return drawSign(ctx, x, y);
     case "tallGrass":
       return drawTallGrass(ctx, x, y);
-    case "doorStep":
-      return drawDoorStep(ctx, x, y);
-    case "sand":
-      return drawPath(ctx, x, y);
     case "track":
       return drawTrack(ctx, x, y);
     case "trackCrossing":
@@ -968,7 +965,7 @@ export const drawTile = (
     case "doorLocked":
       return drawInteriorDoor(ctx, x, y, "#8a6a4a", "#3a2c1e", "#4b5563");
     case "doorCSC":
-      // Lit window: this is the one door that's open
+      // The lit window marks the one office that's open
       return drawInteriorDoor(ctx, x, y, "#3f6fb0", "#1e3a66", "#ffe9a8");
     case "stairs":
       return drawStairs(ctx, x, y);
@@ -1034,66 +1031,15 @@ export const drawTile = (
       return drawRoyalDoor(ctx, x, y, false);
     case "doorGrand":
       return drawRoyalDoor(ctx, x, y, true);
-    case "buildingRoofTop":
-    case "buildingRoofBase":
-    case "buildingWall":
-    case "buildingWindow":
-    case "buildingDoor": {
-      const b =
-        buildingLookup && tx !== undefined && ty !== undefined
-          ? buildingLookup(tx, ty)
-          : undefined;
-      const wall = b?.wallColor ?? "#f0dcb4";
-      const wallShadow = b?.wallShadow ?? "#a88860";
-      const roof = b?.roofColor ?? "#e88a4a";
-      const roofShadow = b?.roofShadow ?? "#a85220";
-      if (tile === "buildingRoofTop")
-        return drawBuildingRoofTop(ctx, x, y, roof, roofShadow);
-      if (tile === "buildingRoofBase")
-        return drawBuildingRoofBase(ctx, x, y, roof, roofShadow);
-      if (tile === "buildingWall")
-        return drawBuildingWall(ctx, x, y, wall, wallShadow);
-      if (tile === "buildingWindow")
-        return drawBuildingWindow(ctx, x, y, wall, wallShadow);
-      return drawBuildingDoor(ctx, x, y, wall, wallShadow);
-    }
   }
 };
 
 // ============ TILE CACHE ============
-// Rendering each tile with dozens of fillRect calls every frame is expensive
-// (thousands of calls per frame on mobile → choppy). Instead we render each
-// unique tile once into a small offscreen canvas and blit it with drawImage,
-// which is dramatically faster.
+// Drawing every tile from rectangles each frame is too slow on phones, so each
+// distinct tile is drawn once into a small canvas and then copied as an image.
+
 const tileCache = new Map<string, HTMLCanvasElement>();
 
-const getTileCanvas = (
-  tile: TileType,
-  animFrame: number,
-  building?: Building
-): HTMLCanvasElement => {
-  const isBuilding = tile.startsWith("building");
-  const key = isBuilding
-    ? `${tile}|${building?.roofColor ?? ""}|${building?.wallColor ?? ""}`
-    : `${tile}|${ANIMATED_TILES.has(tile) ? animFrame : 0}`;
-
-  let c = tileCache.get(key);
-  if (!c) {
-    c = document.createElement("canvas");
-    c.width = TILE_SIZE;
-    c.height = TILE_SIZE;
-    const g = c.getContext("2d");
-    if (g) {
-      g.imageSmoothingEnabled = false;
-      // Reuse the existing draw dispatch; building tiles get a constant lookup.
-      drawTile(g, tile, 0, 0, animFrame, building ? () => building : undefined, 0, 0);
-    }
-    tileCache.set(key, c);
-  }
-  return c;
-};
-
-// Fast path used by the game loop: blit a cached tile image.
 export const drawTileCached = (
   ctx: CanvasRenderingContext2D,
   tile: TileType,
@@ -1102,95 +1048,42 @@ export const drawTileCached = (
   animFrame: number,
   building?: Building
 ) => {
-  const c = getTileCanvas(tile, animFrame, building);
-  ctx.drawImage(c, x, y);
+  const variant = building
+    ? `${building.roofColor}|${building.wallColor}`
+    : ANIMATED_TILES.has(tile)
+      ? animFrame
+      : 0;
+  const key = `${tile}|${variant}`;
+  let image = tileCache.get(key);
+  if (!image) {
+    image = document.createElement("canvas");
+    image.width = TILE_SIZE;
+    image.height = TILE_SIZE;
+    const g = image.getContext("2d");
+    if (g) {
+      g.imageSmoothingEnabled = false;
+      drawTile(g, tile, 0, 0, animFrame, building);
+    }
+    tileCache.set(key, image);
+  }
+  ctx.drawImage(image, x, y);
 };
 
 // ============ CHARACTER ============
-// Detailed RSE-style character drawn on a 20x20 sub-pixel grid (half-PIX cells)
-// with saturated palette, multi-tone shading, and centered single-color eyes.
+// People are drawn on a 20x20 grid (2px cells at TILE_SIZE 40) with a dark
+// outline, a few shades per colour and single-pixel eyes.
 
 export type OutfitStyle = "casual" | "trainer" | "labCoat" | "officeCoat";
 
-export const drawCharacter = (
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  shirtColor: string,
-  hairColor: string,
-  direction: number,
-  walkFrame: number,
-  accessory?: "resume" | null,
-  outfit: OutfitStyle = "casual"
-) => {
-  const bob = walkFrame === 1 ? PIX / 2 : 0;
-  const cy = y + bob;
-  const p = PIX / 2; // 2px sub-cell (20x20 grid)
+type Cell = (gx: number, gy: number, w: number, h: number, color: string) => void;
 
-  // Derived palette
-  const skin = "#f8d0a8";
-  const skinShadow = "#c48868";
-  const skinLight = "#ffe4c0";
-  const outline = "#1a1008";
-  const hair = hairColor;
-  const hairDark = shade(hairColor, -32);
-  const shirt = shirtColor;
-  const shirtDark = shade(shirtColor, -32);
-  const shirtLight = shade(shirtColor, 18);
-  const pants = "#385878";
-  const pantsDark = "#1e3450";
-  const shoe = "#1a1008";
-
-  const Q = (gx: number, gy: number, w: number, h: number, c: string) => {
-    ctx.fillStyle = c;
-    ctx.fillRect(x + gx * p, cy + gy * p, w * p, h * p);
-  };
-
-  // Ground shadow (unbobbed)
-  ctx.fillStyle = "rgba(0,0,0,0.28)";
-  ctx.beginPath();
-  ctx.ellipse(x + 10 * p, y + 19 * p, 6 * p, 1.2 * p, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  const palette: CharPalette = {
-    skin,
-    skinShadow,
-    skinLight,
-    outline,
-    hair,
-    hairDark,
-    shirt,
-    shirtDark,
-    shirtLight,
-    pants,
-    pantsDark,
-    shoe,
-    walkFrame,
-    outfit,
-  };
-
-  if (direction === 0) drawCharFront(Q, palette);
-  else if (direction === 1) drawCharBack(Q, palette);
-  else drawCharSide(Q, direction === 3, palette);
-
-  if (accessory === "resume") {
-    const bobOffset = Math.sin(Date.now() / 300) * 1;
-    ctx.fillStyle = "#fefefe";
-    ctx.fillRect(x + 4 * PIX, y - 2 * PIX + bobOffset, 3 * PIX, 4 * PIX);
-    ctx.fillStyle = "#1e293b";
-    ctx.fillRect(x + 4.5 * PIX, y - PIX + bobOffset, 2 * PIX, PIX / 2);
-    ctx.fillRect(x + 4.5 * PIX, y + bobOffset, 2 * PIX, PIX / 2);
-    ctx.fillRect(x + 4.5 * PIX, y + PIX + bobOffset, PIX, PIX / 2);
-  }
-};
-
-type CharPalette = {
+interface CharPalette {
   skin: string;
   skinShadow: string;
-  skinLight?: string;
   outline: string;
   hair: string;
   hairDark: string;
+  hairLight: string;
   shirt: string;
   shirtDark: string;
   shirtLight: string;
@@ -1198,115 +1091,271 @@ type CharPalette = {
   pantsDark: string;
   shoe: string;
   walkFrame: number;
-  outfit: OutfitStyle;
+}
+
+export const drawCharacter = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  shirtColor: string,
+  hairColor: string,
+  direction: Direction,
+  walkFrame: number,
+  outfit: OutfitStyle = "casual"
+) => {
+  const cell = PIX / 2;
+  const cy = y + (walkFrame === 1 ? PIX / 2 : 0);
+  const q: Cell = (gx, gy, w, h, color) => {
+    ctx.fillStyle = color;
+    ctx.fillRect(x + gx * cell, cy + gy * cell, w * cell, h * cell);
+  };
+
+  // Ground shadow stays put while the body bobs
+  ctx.fillStyle = "rgba(0,0,0,0.28)";
+  ctx.beginPath();
+  ctx.ellipse(x + 10 * cell, y + 19 * cell, 6 * cell, 1.2 * cell, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const p: CharPalette = {
+    skin: "#f8d0a8",
+    skinShadow: "#c48868",
+    outline: "#1a1008",
+    hair: hairColor,
+    hairDark: shade(hairColor, -32),
+    hairLight: shade(hairColor, 15),
+    shirt: shirtColor,
+    shirtDark: shade(shirtColor, -32),
+    shirtLight: shade(shirtColor, 18),
+    pants: "#385878",
+    pantsDark: "#1e3450",
+    shoe: "#1a1008",
+    walkFrame,
+  };
+
+  if (direction === 0) {
+    drawCharFront(q, p);
+    if (outfit === "trainer") drawTrainerCapFront(q, p);
+    else if (outfit === "labCoat") {
+      drawLabCoatFront(q, p);
+      drawGlassesFront(q, p);
+    } else if (outfit === "officeCoat") drawOfficeCoatFront(q, p);
+  } else if (direction === 1) {
+    drawCharBack(q, p);
+    if (outfit === "trainer") drawTrainerCapBack(q, p);
+  } else {
+    const facingRight = direction === 3;
+    drawCharSide(q, p, facingRight);
+    if (outfit === "trainer") drawTrainerCapSide(q, p, facingRight);
+  }
 };
 
-// ==== outfit overlays ====
-
-type Q = (gx: number, gy: number, w: number, h: number, c: string) => void;
-
-// Trainer cap covering the top of the head (rows 4-6).
-// Uses the character's shirt color as the cap fabric.
-function drawTrainerCapFront(q: Q, P: CharPalette) {
-  const cap = P.shirt;
-  const capDark = P.shirtDark;
-  const capLight = P.shirtLight;
-  // Cap fabric (rows 4-6)
-  q(5, 4, 10, 1, cap);
-  q(5, 5, 10, 2, cap);
-  // Highlight on top
-  q(7, 4, 3, 1, capLight);
-  // Cap logo — small white square
-  q(9, 5, 2, 1, "#ffffff");
-  // Cap outlines
-  q(5, 4, 1, 3, P.outline);
-  q(14, 4, 1, 3, P.outline);
-  q(5, 3, 10, 1, P.outline);
-  // Brim shadow strip
-  q(5, 7, 10, 1, capDark);
-  // Brim outline at row 7
-  q(5, 7, 10, 1, capDark);
-  q(4, 7, 12, 1, P.outline);
-  q(4, 7, 1, 1, capDark);
-  q(15, 7, 1, 1, capDark);
+// Shirt rows 11 to 14, shared by the front and back views.
+function drawShirt(q: Cell, p: CharPalette) {
+  q(6, 11, 8, 1, p.outline);
+  q(7, 11, 6, 1, p.shirtDark);
+  q(6, 12, 1, 3, p.outline);
+  q(13, 12, 1, 3, p.outline);
+  q(7, 12, 6, 3, p.shirt);
+  q(7, 12, 6, 1, p.shirtLight);
+  q(7, 14, 6, 1, p.shirtDark);
+  q(5, 12, 1, 3, p.outline);
+  q(14, 12, 1, 3, p.outline);
 }
 
-function drawTrainerCapBack(q: Q, P: CharPalette) {
-  const cap = P.shirt;
-  const capDark = P.shirtDark;
-  const capLight = P.shirtLight;
-  q(5, 4, 10, 1, cap);
-  q(5, 5, 10, 2, cap);
-  q(7, 5, 3, 1, capLight);
-  // Snapback band at back
-  q(6, 6, 8, 1, capDark);
-  q(9, 6, 2, 1, "#ffffff");
-  q(5, 4, 1, 3, P.outline);
-  q(14, 4, 1, 3, P.outline);
-  q(5, 3, 10, 1, P.outline);
-  q(5, 7, 10, 1, P.outline);
-}
-
-function drawTrainerCapSide(q: Q, facingRight: boolean, P: CharPalette) {
-  const cap = P.shirt;
-  const capLight = P.shirtLight;
-  const capDark = P.shirtDark;
-  q(5, 4, 10, 1, cap);
-  q(5, 5, 10, 2, cap);
-  q(facingRight ? 6 : 10, 4, 3, 1, capLight);
-  q(9, 5, 2, 1, "#ffffff");
-  q(5, 3, 10, 1, P.outline);
-  q(5, 4, 1, 3, P.outline);
-  q(14, 4, 1, 3, P.outline);
-  // Brim projects out in the facing direction
-  if (facingRight) {
-    q(14, 6, 3, 1, capDark);
-    q(14, 7, 3, 1, P.outline);
+// Legs and shoes for the front and back views. On the second walk frame the
+// left foot lifts, so walking up or down reads as a step.
+function drawLegs(q: Cell, p: CharPalette) {
+  q(6, 15, 8, 1, p.outline);
+  q(7, 15, 6, 2, p.pants);
+  q(7, 15, 6, 1, p.pantsDark);
+  q(9, 15, 2, 2, p.pantsDark);
+  q(11, 17, 2, 1, p.pants);
+  q(11, 18, 3, 1, p.shoe);
+  q(13, 17, 1, 2, p.outline);
+  if (p.walkFrame === 0) {
+    q(7, 17, 2, 1, p.pants);
+    q(6, 18, 3, 1, p.shoe);
+    q(6, 17, 1, 2, p.outline);
   } else {
-    q(3, 6, 3, 1, capDark);
-    q(3, 7, 3, 1, P.outline);
+    q(6, 17, 3, 1, p.shoe);
+    q(6, 16.5, 1, 1.5, p.outline);
   }
-  q(5, 7, 10, 1, capDark);
 }
 
-// Lab coat: off-white overlay with a V-neck opening showing the inner shirt,
-// coat sleeves covering the arms, a chest pocket with a pen, and buttons.
-function drawLabCoatFront(q: Q, P: CharPalette) {
+function drawCharFront(q: Cell, p: CharPalette) {
+  // Hair
+  q(6, 3, 8, 1, p.outline);
+  q(5, 4, 10, 1, p.hairDark);
+  q(5, 5, 10, 2, p.hair);
+  q(7, 4, 2, 1, p.hair);
+  q(11, 4, 2, 1, p.hair);
+  q(5, 4, 1, 3, p.outline);
+  q(14, 4, 1, 3, p.outline);
+
+  // Face with a fringe across the forehead
+  q(6, 7, 8, 1, p.outline);
+  q(6, 7, 1, 3, p.outline);
+  q(13, 7, 1, 3, p.outline);
+  q(7, 7, 6, 1, p.hair);
+  q(7, 8, 6, 2, p.skin);
+  q(7, 8, 1, 2, p.skinShadow);
+  q(12, 8, 1, 2, p.skinShadow);
+  q(7, 10, 6, 1, p.outline);
+  q(8, 8, 1, 1, p.outline);
+  q(11, 8, 1, 1, p.outline);
+  q(9, 9, 2, 1, p.skinShadow);
+  q(9, 10, 2, 1, p.skinShadow);
+
+  drawShirt(q, p);
+  q(6, 12, 0.5, 3, p.skinShadow);
+  q(13.5, 12, 0.5, 3, p.skinShadow);
+  drawLegs(q, p);
+}
+
+function drawCharBack(q: Cell, p: CharPalette) {
+  q(6, 3, 8, 1, p.outline);
+  q(5, 4, 10, 6, p.hair);
+  q(5, 4, 10, 1, p.hairDark);
+  q(7, 5, 2, 1, p.hairLight);
+  q(11, 5, 2, 1, p.hairLight);
+  q(5, 4, 1, 6, p.outline);
+  q(14, 4, 1, 6, p.outline);
+  q(5, 9, 10, 1, p.hairDark);
+  q(9, 10, 2, 1, p.skinShadow);
+
+  drawShirt(q, p);
+  q(6, 12, 0.5, 3, p.shirtDark);
+  q(13.5, 12, 0.5, 3, p.shirtDark);
+  drawLegs(q, p);
+}
+
+function drawCharSide(q: Cell, p: CharPalette, facingRight: boolean) {
+  const front = facingRight ? 13 : 6;
+  const back = facingRight ? 6 : 13;
+
+  // Hair
+  q(6, 3, 8, 1, p.outline);
+  q(5, 4, 10, 1, p.hairDark);
+  q(5, 5, 10, 2, p.hair);
+  q(5, 4, 1, 3, p.outline);
+  q(14, 4, 1, 3, p.outline);
+  q(facingRight ? 9 : 7, 4, 2, 1, p.hairLight);
+
+  // Profile: nose on the facing side, hair sweeping back, one eye
+  q(6, 7, 8, 1, p.outline);
+  q(6, 7, 1, 3, p.outline);
+  q(13, 7, 1, 3, p.outline);
+  q(7, 7, 6, 1, p.hair);
+  q(7, 8, 6, 2, p.skin);
+  q(front, 8, 1, 1, p.skinShadow);
+  q(front, 6, 1, 2, p.hair);
+  q(back, 8, 1, 1, p.hair);
+  q(facingRight ? 11 : 8, 8, 1, 1, p.outline);
+  q(7, 10, 6, 1, p.outline);
+  q(8, 9, 4, 1, p.skinShadow);
+  q(9, 10, 2, 1, p.skinShadow);
+
+  // Shirt, with the arms swinging as they walk
+  q(6, 11, 8, 1, p.outline);
+  q(7, 11, 6, 1, p.shirtDark);
+  q(6, 12, 1, 3, p.outline);
+  q(13, 12, 1, 3, p.outline);
+  q(7, 12, 6, 3, p.shirt);
+  q(7, 12, 6, 1, p.shirtLight);
+  q(7, 14, 6, 1, p.shirtDark);
+  const swing = p.walkFrame === 1 ? 1 : 0;
+  q(front, 12 + swing, 1, 2, p.shirt);
+  q(back, 12 - swing, 1, 2, p.shirtDark);
+
+  // Legs split further apart mid-step
+  q(6, 15, 8, 1, p.outline);
+  q(7, 15, 6, 2, p.pants);
+  q(7, 15, 6, 1, p.pantsDark);
+  if (p.walkFrame === 0) {
+    q(8, 17, 1, 1, p.pants);
+    q(11, 17, 1, 1, p.pants);
+    q(7, 18, 3, 1, p.shoe);
+    q(10, 18, 3, 1, p.shoe);
+  } else {
+    q(7, 17, 2, 1, p.pants);
+    q(10, 17, 2, 1, p.pants);
+    q(6, 18, 3, 1, p.shoe);
+    q(11, 18, 3, 1, p.shoe);
+  }
+  q(6, 17, 1, 2, p.outline);
+  q(13, 17, 1, 2, p.outline);
+}
+
+// ==== Outfits drawn over the base body ====
+
+// Baseball cap in the shirt colour, with a white logo.
+function drawTrainerCapFront(q: Cell, p: CharPalette) {
+  q(5, 3, 10, 1, p.outline);
+  q(5, 4, 10, 3, p.shirt);
+  q(7, 4, 3, 1, p.shirtLight);
+  q(9, 5, 2, 1, "#ffffff");
+  q(5, 4, 1, 3, p.outline);
+  q(14, 4, 1, 3, p.outline);
+  q(4, 7, 12, 1, p.outline);
+  q(4, 7, 1, 1, p.shirtDark);
+  q(15, 7, 1, 1, p.shirtDark);
+}
+
+function drawTrainerCapBack(q: Cell, p: CharPalette) {
+  q(5, 3, 10, 1, p.outline);
+  q(5, 4, 10, 3, p.shirt);
+  q(7, 5, 3, 1, p.shirtLight);
+  q(6, 6, 8, 1, p.shirtDark);
+  q(9, 6, 2, 1, "#ffffff");
+  q(5, 4, 1, 3, p.outline);
+  q(14, 4, 1, 3, p.outline);
+  q(5, 7, 10, 1, p.outline);
+}
+
+function drawTrainerCapSide(q: Cell, p: CharPalette, facingRight: boolean) {
+  q(5, 3, 10, 1, p.outline);
+  q(5, 4, 10, 3, p.shirt);
+  q(facingRight ? 6 : 10, 4, 3, 1, p.shirtLight);
+  q(9, 5, 2, 1, "#ffffff");
+  q(5, 4, 1, 3, p.outline);
+  q(14, 4, 1, 3, p.outline);
+  q(5, 7, 10, 1, p.shirtDark);
+  // The brim sticks out on the side they're facing
+  const brimX = facingRight ? 14 : 3;
+  q(brimX, 6, 3, 1, p.shirtDark);
+  q(brimX, 7, 3, 1, p.outline);
+}
+
+// Off-white lab coat with a V-neck, a chest pocket with a pen, and buttons.
+function drawLabCoatFront(q: Cell, p: CharPalette) {
   const coat = "#f6f6ee";
   const coatShade = "#d0d0c4";
   const coatDark = "#4a4a3e";
-  const buttonColor = "#6a6a5c";
-  const penBody = "#c83030";
-  const penCap = "#ffe28a";
 
-  // Sleeves covering the arms
+  // Sleeves and cuffs
   q(5, 12, 1.5, 3, coat);
   q(13.5, 12, 1.5, 3, coat);
-  q(5, 12, 0.5, 3, P.outline);
-  q(14.5, 12, 0.5, 3, P.outline);
+  q(5, 12, 0.5, 3, p.outline);
+  q(14.5, 12, 0.5, 3, p.outline);
   q(5.5, 14, 1, 0.5, coatShade);
   q(13.5, 14, 1, 0.5, coatShade);
-  // Sleeve cuffs
   q(5, 14.5, 1.5, 0.5, coatDark);
   q(13.5, 14.5, 1.5, 0.5, coatDark);
 
-  // Coat body outline + fill
-  q(6, 11, 8, 1, P.outline);
-  q(6, 12, 1, 3, P.outline);
-  q(13, 12, 1, 3, P.outline);
+  // Body
+  q(6, 11, 8, 1, p.outline);
+  q(6, 12, 1, 3, p.outline);
+  q(13, 12, 1, 3, p.outline);
   q(7, 11, 6, 4, coat);
-  // Right-side subtle shading
   q(12, 12, 1, 3, coatShade);
   q(7, 14, 6, 1, coatShade);
 
-  // V-neck opening — inner shirt visible, narrowing downward
-  q(8, 11, 4, 0.5, P.shirtDark);
-  q(8, 11.5, 4, 0.5, P.shirt);
-  q(8.5, 12, 3, 0.5, P.shirt);
-  q(9, 12.5, 2, 0.5, P.shirt);
-  q(9.5, 13, 1, 0.5, P.shirt);
-
-  // Lapel dark edges lining the V
+  // V-neck showing the shirt underneath, lined by the lapels
+  q(8, 11, 4, 0.5, p.shirtDark);
+  q(8, 11.5, 4, 0.5, p.shirt);
+  q(8.5, 12, 3, 0.5, p.shirt);
+  q(9, 12.5, 2, 0.5, p.shirt);
+  q(9.5, 13, 1, 0.5, p.shirt);
   q(7.5, 11.5, 0.5, 1, coatDark);
   q(11.5, 11.5, 0.5, 1, coatDark);
   q(8, 12.5, 0.5, 0.5, coatDark);
@@ -1314,291 +1363,49 @@ function drawLabCoatFront(q: Q, P: CharPalette) {
   q(8.5, 13, 0.5, 0.5, coatDark);
   q(10.5, 13, 0.5, 0.5, coatDark);
 
-  // Chest pocket on the left
+  // Pocket and pen
   q(7, 13.5, 2, 1, coat);
-  q(7, 13.5, 2, 0.5, coatDark); // top flap
-  q(7, 13.5, 0.5, 1, coatDark); // left edge
-  q(8.5, 13.5, 0.5, 1, coatDark); // right edge
+  q(7, 13.5, 2, 0.5, coatDark);
+  q(7, 13.5, 0.5, 1, coatDark);
+  q(8.5, 13.5, 0.5, 1, coatDark);
+  q(7.5, 13, 0.5, 1, "#c83030");
+  q(7.5, 13, 0.5, 0.5, "#ffe28a");
 
-  // Pen sticking out of the pocket
-  q(7.5, 13, 0.5, 1, penBody);
-  q(7.5, 13, 0.5, 0.5, penCap);
-
-  // Two buttons on the right side
-  q(11.5, 13.5, 0.5, 0.5, buttonColor);
-  q(11.5, 14.5, 0.5, 0.5, buttonColor);
+  // Buttons
+  q(11.5, 13.5, 0.5, 0.5, "#6a6a5c");
+  q(11.5, 14.5, 0.5, 0.5, "#6a6a5c");
 }
 
-// Professor glasses — solid dark round-ish frames sitting over the eye row.
-function drawGlassesFront(q: Q, P: CharPalette) {
-  const frame = P.outline;
-  const lens = "#5aa0d8";
-  const shine = "#ffffff";
-
-  // Left lens
-  q(7.5, 7.5, 1.5, 1.5, frame);
-  q(8, 8, 0.5, 0.5, lens);
-  q(8, 7.5, 0.5, 0.5, shine);
-  // Right lens
-  q(10.5, 7.5, 1.5, 1.5, frame);
-  q(11, 8, 0.5, 0.5, lens);
-  q(11, 7.5, 0.5, 0.5, shine);
-  // Bridge over the nose
-  q(9, 8, 1.5, 0.5, frame);
-  // Small temple arms extending outward
-  q(7, 8, 0.5, 0.5, frame);
-  q(12.5, 8, 0.5, 0.5, frame);
+function drawGlassesFront(q: Cell, p: CharPalette) {
+  for (const lx of [7.5, 10.5]) {
+    q(lx, 7.5, 1.5, 1.5, p.outline);
+    q(lx + 0.5, 8, 0.5, 0.5, "#5aa0d8");
+    q(lx + 0.5, 7.5, 0.5, 0.5, "#ffffff");
+  }
+  q(9, 8, 1.5, 0.5, p.outline);
+  q(7, 8, 0.5, 0.5, p.outline);
+  q(12.5, 8, 0.5, 0.5, p.outline);
 }
 
-// Office blazer over shirt: dark jacket sides, inner white shirt, colored tie.
-function drawOfficeCoatFront(q: Q, P: CharPalette) {
+// Dark blazer over a white shirt, with a tie in the shirt colour.
+function drawOfficeCoatFront(q: Cell, p: CharPalette) {
   const jacket = "#2a2a3a";
   const jacketShade = "#404055";
-  const inner = "#f0f0f0";
-  const tie = P.shirt;
-  const tieDark = P.shirtDark;
-  // Collar row
-  q(6, 11, 8, 1, P.outline);
+  q(6, 11, 8, 1, p.outline);
   q(7, 11, 6, 1, jacket);
-  // Body
-  q(6, 12, 1, 3, P.outline);
-  q(13, 12, 1, 3, P.outline);
+  q(6, 12, 1, 3, p.outline);
+  q(13, 12, 1, 3, p.outline);
   q(7, 12, 6, 3, jacket);
-  // Right side highlight (subtle)
   q(7, 12, 1, 3, jacketShade);
-  // Inner shirt (white strip in center)
-  q(9, 11, 2, 1, P.outline);
-  q(9, 12, 2, 3, inner);
-  // Lapels
+  q(9, 11, 2, 1, p.outline);
+  q(9, 12, 2, 3, "#f0f0f0");
   q(8, 11, 1, 1, jacketShade);
   q(11, 11, 1, 1, jacketShade);
   q(8.5, 12, 0.5, 1, jacketShade);
   q(11, 12, 0.5, 1, jacketShade);
-  // Tie down the middle
-  q(9.5, 12, 1, 2, tie);
-  q(9.5, 14, 1, 1, tieDark);
-  // Tie knot
-  q(9.5, 12, 1, 1, tieDark);
-}
-
-// FRONT-FACING VIEW
-function drawCharFront(
-  Q: (gx: number, gy: number, w: number, h: number, c: string) => void,
-  P: CharPalette
-) {
-  // Head hair block (rows 3-7, cols 6-13)
-  Q(6, 3, 8, 1, P.outline);
-  Q(5, 4, 10, 1, P.hairDark);
-  Q(5, 5, 10, 1, P.hair);
-  Q(5, 6, 10, 1, P.hair);
-  // Hair highlight strip
-  Q(7, 4, 2, 1, P.hair);
-  Q(11, 4, 2, 1, P.hair);
-  // Hair outline sides
-  Q(5, 4, 1, 3, P.outline);
-  Q(14, 4, 1, 3, P.outline);
-
-  // Face skin (rows 7-10)
-  Q(6, 7, 8, 1, P.outline); // hair fringe bottom outline
-  Q(6, 7, 1, 3, P.outline);
-  Q(13, 7, 1, 3, P.outline);
-  // Skin fill
-  Q(7, 7, 6, 1, P.hair); // last row of fringe over forehead
-  Q(7, 8, 6, 2, P.skin);
-  // Skin shadow on sides
-  Q(7, 8, 1, 2, P.skinShadow);
-  Q(12, 8, 1, 2, P.skinShadow);
-  // Face bottom outline
-  Q(7, 10, 6, 1, P.outline);
-
-  // Eyes — single dark color, centered
-  Q(8, 8, 1, 1, P.outline);
-  Q(11, 8, 1, 1, P.outline);
-  // Small mouth hint (chin dimple)
-  Q(9, 9, 2, 1, P.skinShadow);
-
-  // Neck
-  Q(9, 10, 2, 1, P.skinShadow);
-
-  // Shirt (rows 11-14)
-  // Collar row
-  Q(6, 11, 8, 1, P.outline);
-  Q(7, 11, 6, 1, P.shirtDark);
-  // Main shirt body
-  Q(6, 12, 1, 3, P.outline);
-  Q(13, 12, 1, 3, P.outline);
-  Q(7, 12, 6, 3, P.shirt);
-  Q(7, 12, 6, 1, P.shirtLight);
-  Q(7, 14, 6, 1, P.shirtDark);
-  // Arms (skin) on outside
-  Q(5, 12, 1, 3, P.outline);
-  Q(6, 12, 0.5, 3, P.skinShadow);
-  Q(14, 12, 1, 3, P.outline);
-  Q(13.5, 12, 0.5, 3, P.skinShadow);
-
-  // Pants / legs (rows 15-17)
-  Q(6, 15, 8, 1, P.outline);
-  Q(7, 15, 6, 2, P.pants);
-  Q(7, 15, 6, 1, P.pantsDark); // waistband
-  // Leg separation
-  Q(9, 15, 2, 2, P.pantsDark);
-
-  // Walking animation — leg positions shift
-  if (P.walkFrame === 0) {
-    Q(7, 17, 2, 1, P.pants);
-    Q(11, 17, 2, 1, P.pants);
-    // Shoes
-    Q(6, 18, 3, 1, P.shoe);
-    Q(11, 18, 3, 1, P.shoe);
-  } else {
-    Q(7, 17, 2, 1, P.pants);
-    Q(11, 17, 2, 1, P.pants);
-    // Shoes shifted
-    Q(6, 18, 3, 1, P.shoe);
-    Q(11, 18, 3, 1, P.shoe);
-    // One shoe raised slightly (bob effect handled via cy)
-  }
-
-  // Full body outline touch-ups
-  Q(6, 17, 1, 2, P.outline);
-  Q(13, 17, 1, 2, P.outline);
-
-  // Outfit overlays
-  if (P.outfit === "trainer") drawTrainerCapFront(Q, P);
-  else if (P.outfit === "labCoat") {
-    drawLabCoatFront(Q, P);
-    drawGlassesFront(Q, P);
-  } else if (P.outfit === "officeCoat") drawOfficeCoatFront(Q, P);
-}
-
-// BACK VIEW
-function drawCharBack(
-  Q: (gx: number, gy: number, w: number, h: number, c: string) => void,
-  P: CharPalette
-) {
-  // Full hair back
-  Q(6, 3, 8, 1, P.outline);
-  Q(5, 4, 10, 6, P.hair);
-  Q(5, 4, 10, 1, P.hairDark);
-  // Hair highlights
-  Q(7, 5, 2, 1, shade(P.hair, 15));
-  Q(11, 5, 2, 1, shade(P.hair, 15));
-  Q(5, 4, 1, 6, P.outline);
-  Q(14, 4, 1, 6, P.outline);
-  Q(5, 9, 10, 1, P.hairDark);
-
-  // Neck strip
-  Q(9, 10, 2, 1, P.skinShadow);
-
-  // Shirt back
-  Q(6, 11, 8, 1, P.outline);
-  Q(7, 11, 6, 1, P.shirtDark);
-  Q(6, 12, 1, 3, P.outline);
-  Q(13, 12, 1, 3, P.outline);
-  Q(7, 12, 6, 3, P.shirt);
-  Q(7, 12, 6, 1, P.shirtLight);
-  Q(7, 14, 6, 1, P.shirtDark);
-
-  // Arms
-  Q(5, 12, 1, 3, P.outline);
-  Q(14, 12, 1, 3, P.outline);
-  Q(6, 12, 0.5, 3, P.shirtDark);
-  Q(13.5, 12, 0.5, 3, P.shirtDark);
-
-  // Pants + shoes (same as front)
-  Q(6, 15, 8, 1, P.outline);
-  Q(7, 15, 6, 2, P.pants);
-  Q(7, 15, 6, 1, P.pantsDark);
-  Q(9, 15, 2, 2, P.pantsDark);
-  Q(7, 17, 2, 1, P.pants);
-  Q(11, 17, 2, 1, P.pants);
-  Q(6, 18, 3, 1, P.shoe);
-  Q(11, 18, 3, 1, P.shoe);
-  Q(6, 17, 1, 2, P.outline);
-  Q(13, 17, 1, 2, P.outline);
-
-  if (P.outfit === "trainer") drawTrainerCapBack(Q, P);
-}
-
-// SIDE VIEW (left = false means facing left, true = facing right; drawn as left then mirrored)
-function drawCharSide(
-  Q: (gx: number, gy: number, w: number, h: number, c: string) => void,
-  facingRight: boolean,
-  P: CharPalette
-) {
-  // We draw a leftward-facing profile using cols 6-13 and let the caller flip via facingRight
-  // by swapping x offsets. Simpler: draw the same profile but "eye" position + hair sweep
-  // reflect based on facingRight.
-  const eyeCol = facingRight ? 11 : 8;
-  const fringeSide = facingRight ? 6 : 13;
-  const backSide = facingRight ? 13 : 6;
-
-  // Hair block
-  Q(6, 3, 8, 1, P.outline);
-  Q(5, 4, 10, 1, P.hairDark);
-  Q(5, 5, 10, 2, P.hair);
-  Q(5, 4, 1, 3, P.outline);
-  Q(14, 4, 1, 3, P.outline);
-  // Highlight
-  Q(facingRight ? 9 : 7, 4, 2, 1, shade(P.hair, 15));
-
-  // Head skin
-  Q(6, 7, 8, 1, P.outline);
-  Q(6, 7, 1, 3, P.outline);
-  Q(13, 7, 1, 3, P.outline);
-  Q(7, 7, 6, 1, P.hair);
-  Q(7, 8, 6, 2, P.skin);
-  // Nose hint on facing side
-  Q(facingRight ? 13 : 6, 8, 1, 1, P.skinShadow);
-  // Fringe sweep on back side
-  Q(backSide, 6, 1, 2, P.hair);
-  // Ear on non-facing side
-  Q(fringeSide, 8, 1, 1, P.hair);
-  // Eye
-  Q(eyeCol, 8, 1, 1, P.outline);
-  // Chin
-  Q(7, 10, 6, 1, P.outline);
-  Q(8, 9, 4, 1, P.skinShadow);
-
-  // Neck
-  Q(9, 10, 2, 1, P.skinShadow);
-
-  // Shirt
-  Q(6, 11, 8, 1, P.outline);
-  Q(7, 11, 6, 1, P.shirtDark);
-  Q(6, 12, 1, 3, P.outline);
-  Q(13, 12, 1, 3, P.outline);
-  Q(7, 12, 6, 3, P.shirt);
-  Q(7, 12, 6, 1, P.shirtLight);
-  Q(7, 14, 6, 1, P.shirtDark);
-
-  // Walking arm swing
-  const armFrontCol = facingRight ? 13 : 6;
-  const armBackCol = facingRight ? 6 : 13;
-  const armSwing = P.walkFrame === 1 ? 1 : 0;
-  Q(armFrontCol, 12 + armSwing, 1, 2, P.shirt);
-  Q(armBackCol, 12 - armSwing, 1, 2, P.shirtDark);
-
-  // Pants + shoes with walking split
-  Q(6, 15, 8, 1, P.outline);
-  Q(7, 15, 6, 2, P.pants);
-  Q(7, 15, 6, 1, P.pantsDark);
-  if (P.walkFrame === 0) {
-    Q(8, 17, 1, 1, P.pants);
-    Q(11, 17, 1, 1, P.pants);
-    Q(7, 18, 3, 1, P.shoe);
-    Q(10, 18, 3, 1, P.shoe);
-  } else {
-    // Slight step shift
-    Q(7, 17, 2, 1, P.pants);
-    Q(10, 17, 2, 1, P.pants);
-    Q(6, 18, 3, 1, P.shoe);
-    Q(11, 18, 3, 1, P.shoe);
-  }
-  Q(6, 17, 1, 2, P.outline);
-  Q(13, 17, 1, 2, P.outline);
-
-  if (P.outfit === "trainer") drawTrainerCapSide(Q, facingRight, P);
+  q(9.5, 12, 1, 1, p.shirtDark);
+  q(9.5, 13, 1, 1, p.shirt);
+  q(9.5, 14, 1, 1, p.shirtDark);
 }
 
 // ============ POKEMON ============
@@ -1897,8 +1704,9 @@ export const drawTrain = (
 
   for (let car = 0; car < 2; car++) {
     const cx = px + car * (carW + carGap);
-    const isFront = dir === 1 ? car === 1 : car === 0;
-    const isRear = dir === 1 ? car === 0 : car === 1;
+    // Car 0 is the left car. Its cab is at the left end, car 1's at the right.
+    const cabOnRight = car === 1;
+    const isFront = dir === 1 ? cabOnRight : !cabOnRight;
 
     // Undercarriage and wheels
     ctx.fillStyle = "#3a3f47";
@@ -1959,16 +1767,11 @@ export const drawTrain = (
     ctx.textBaseline = "alphabetic";
     ctx.fillText("ION", cx + 0.3 * T, top + 0.98 * T);
 
-    // Cab windshields at the outer ends (the train can drive either way)
-    if (isFront || isRear) {
-      const endX = isFront === (dir === 1) ? cx + carW - 0.34 * T : cx + 0.06 * T;
-      ctx.fillStyle = "#14202e";
-      ctx.fillRect(endX, top + 0.16 * T, 0.28 * T, 0.42 * T);
-      // Headlight at the front, tail light at the back
-      ctx.fillStyle = isFront ? "#ffe680" : "#ff4d4d";
-      const lightX = isFront === (dir === 1) ? cx + carW - 0.16 * T : cx + 0.06 * T;
-      ctx.fillRect(lightX, top + 0.84 * T, 0.1 * T, 0.08 * T);
-    }
+    // Windshield, plus a headlight at the front or a tail light at the back
+    ctx.fillStyle = "#14202e";
+    ctx.fillRect(cabOnRight ? cx + carW - 0.34 * T : cx + 0.06 * T, top + 0.16 * T, 0.28 * T, 0.42 * T);
+    ctx.fillStyle = isFront ? "#ffe680" : "#ff4d4d";
+    ctx.fillRect(cabOnRight ? cx + carW - 0.16 * T : cx + 0.06 * T, top + 0.84 * T, 0.1 * T, 0.08 * T);
   }
   ctx.restore();
 };

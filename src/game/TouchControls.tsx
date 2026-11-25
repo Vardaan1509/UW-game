@@ -1,4 +1,4 @@
-import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
 
 export type TouchDir = "up" | "down" | "left" | "right";
 
@@ -8,11 +8,12 @@ interface TouchControlsProps {
   onAction: () => void;
 }
 
-// On-screen D-pad (bottom-left) + action button (bottom-right).
-// Shown only on touch devices. Uses pointer events so a held direction
-// keeps the character walking, matching keyboard behaviour.
+const NO_SELECT = { touchAction: "none", WebkitUserSelect: "none", userSelect: "none" } as const;
+
+// On-screen D-pad and A button for touch devices. Holding a direction keeps
+// the character walking, the same as holding a key.
 const TouchControls = ({ onPress, onRelease, onAction }: TouchControlsProps) => {
-  const dirBtn = (dir: TouchDir, Icon: typeof ChevronUp, extra: string) => (
+  const dirButton = (dir: TouchDir, Icon: typeof ChevronUp) => (
     <button
       aria-label={dir}
       onContextMenu={(e) => e.preventDefault()}
@@ -21,14 +22,11 @@ const TouchControls = ({ onPress, onRelease, onAction }: TouchControlsProps) => 
         e.currentTarget.setPointerCapture?.(e.pointerId);
         onPress(dir);
       }}
-      onPointerUp={(e) => {
-        e.preventDefault();
-        onRelease(dir);
-      }}
+      onPointerUp={() => onRelease(dir)}
       onPointerCancel={() => onRelease(dir)}
       onPointerLeave={() => onRelease(dir)}
-      className={`flex items-center justify-center bg-slate-800/70 active:bg-primary/70 border border-slate-600/60 text-white rounded-xl backdrop-blur-sm transition-colors ${extra}`}
-      style={{ touchAction: "none", WebkitUserSelect: "none", userSelect: "none" }}
+      className="flex items-center justify-center bg-slate-800/70 active:bg-primary/70 border border-slate-600/60 text-white rounded-xl backdrop-blur-sm transition-colors"
+      style={NO_SELECT}
     >
       <Icon className="w-7 h-7" />
     </button>
@@ -40,32 +38,27 @@ const TouchControls = ({ onPress, onRelease, onAction }: TouchControlsProps) => 
       style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
     >
       <div className="flex items-end justify-between px-5 pb-4">
-        {/* D-pad */}
-        <div
-          className="grid grid-cols-3 grid-rows-3 gap-1.5 pointer-events-auto"
-          style={{ width: 168, height: 168 }}
-        >
+        <div className="grid grid-cols-3 grid-rows-3 gap-1.5 pointer-events-auto w-[168px] h-[168px]">
           <div />
-          {dirBtn("up", ChevronUp, "")}
+          {dirButton("up", ChevronUp)}
           <div />
-          {dirBtn("left", ChevronLeft, "")}
+          {dirButton("left", ChevronLeft)}
           <div className="rounded-lg bg-slate-800/40 border border-slate-700/40" />
-          {dirBtn("right", ChevronRight, "")}
+          {dirButton("right", ChevronRight)}
           <div />
-          {dirBtn("down", ChevronDown, "")}
+          {dirButton("down", ChevronDown)}
           <div />
         </div>
 
-        {/* Action button */}
         <button
-          aria-label="Action / Talk"
+          aria-label="Talk or interact"
           onContextMenu={(e) => e.preventDefault()}
           onPointerDown={(e) => {
             e.preventDefault();
             onAction();
           }}
           className="pointer-events-auto flex items-center justify-center w-20 h-20 rounded-full bg-primary/80 active:bg-primary border-2 border-white/30 text-primary-foreground font-bold text-2xl shadow-lg backdrop-blur-sm"
-          style={{ touchAction: "none", WebkitUserSelect: "none", userSelect: "none" }}
+          style={NO_SELECT}
         >
           A
         </button>

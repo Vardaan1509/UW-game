@@ -1,5 +1,4 @@
-// Tile maps for the explore game: the UW campus overworld plus building
-// interiors. Gen 3 Pokemon-inspired styling.
+// Tile maps: the UW campus overworld and the building interiors.
 
 export const TILE_SIZE = 40;
 
@@ -13,7 +12,6 @@ export type TileType =
   | "water"
   | "tree"
   | "flower"
-  | "sand"
   | "sign"
   | "tallGrass"
   | "buildingRoofTop"
@@ -21,7 +19,6 @@ export type TileType =
   | "buildingWall"
   | "buildingWindow"
   | "buildingDoor"
-  | "doorStep"
   | "track"
   | "trackCrossing"
   | "crossbuck"
@@ -311,7 +308,7 @@ function generateCampus(): { tiles: TileType[][]; crossbucks: Crossbuck[] } {
 }
 
 // ============ INTERIORS ============
-// Drawn as text so the layout is easy to read and edit. One character per tile.
+// Written as text, one character per tile, so layouts are easy to edit.
 
 const LEGEND: Record<string, TileType> = {
   "#": "void",
@@ -407,9 +404,8 @@ const CSC_ROWS = [
 const CSC_EXIT = { x: 6, y: 8 };
 export const HALL_OF_FAME_SPOT = { x: 10, y: 4 };
 
-// PAC: a grand gym hall. A red carpet runs from the entrance up a wide
-// staircase to a raised platform with the Gym Leader's throne. Pillars,
-// banners and torches line the hall, and three doors sit along the bottom wall.
+// PAC gym hall: a red carpet runs from the entrance up a wide staircase to the
+// Gym Leader's throne on a raised platform. Three doors along the bottom wall.
 const PAC_ROWS = [
   "#AAAAAAAAAAAAAAAAAAA#",
   "#QFQOQFQOQKQOQFQOQFQ#",
@@ -527,9 +523,7 @@ const WALKABLE = new Set<TileType>([
   "grassTuft",
   "path",
   "flower",
-  "sand",
   "tallGrass",
-  "doorStep",
   "trackCrossing",
   "floor",
   "rug",
@@ -605,7 +599,7 @@ export const examineMessage = (map: GameMap, x: number, y: number): string | nul
   return bumpMessage(map, x, y) ?? EXAMINE_TEXT[tile] ?? null;
 };
 
-// Catch layout mistakes (a warp into a wall, a spawn on a tree) at load time.
+// Fail fast on layout mistakes, such as a warp that lands inside a wall.
 const validateMaps = () => {
   const walkable = (id: MapId, x: number, y: number) => {
     const tile = MAPS[id].tiles[y]?.[x];
@@ -620,5 +614,8 @@ const validateMaps = () => {
   }
   if (!walkable("campus", SPAWN.x, SPAWN.y)) throw new Error("Spawn is on a solid tile");
   if (!walkable("campus", GUIDE_SPOT.x, GUIDE_SPOT.y)) throw new Error("Guide spot is on a solid tile");
+  if (MAPS.csc.tiles[HALL_OF_FAME_SPOT.y][HALL_OF_FAME_SPOT.x] !== "pedestal") {
+    throw new Error("Hall of Fame spot is not on the pedestal");
+  }
 };
 validateMaps();

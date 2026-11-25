@@ -1,22 +1,20 @@
-// NPCs and other things you can talk to, with dialogue, gift Pokemon, and
-// trainer battles. Dialogue lines can include {name} for the player's name.
+// Everyone you can talk to: dialogue, gifts, wandering and trainer battles.
+// Dialogue lines can include {name}, which becomes the player's name.
 
 import { GUIDE_SPOT, MAPS, SPAWN, isSolid, type Direction, type MapId } from "./world";
 import { SPECIES } from "./pokemon";
-
-export type SpecialAction = "givePokemon" | "battle";
+import type { OutfitStyle } from "./sprites";
 
 export interface NPCChoice {
   question: string;
   options: {
     label: string;
-    action?: SpecialAction;
-    pokemonId?: string; // when action === "givePokemon"
+    startsBattle?: boolean;
     responseLines: string[];
   }[];
 }
 
-// A rectangle (inclusive) that a wandering NPC stays inside.
+// The tiles a wandering NPC stays on: columns x to x + w - 1, rows y to y + h - 1.
 export interface WanderArea {
   x: number;
   y: number;
@@ -39,21 +37,19 @@ export interface NPC {
   mapId: MapId;
   x: number; // starting tile
   y: number;
-  facing?: Direction; // starting direction, defaults to facing down
-  color: string; // dialogue-box dot, and shirt colour for people
+  facing?: Direction; // defaults to facing down
+  color: string; // shirt colour, and the dot in the dialogue box
   hair: string;
-  outfit?: "casual" | "trainer" | "labCoat" | "officeCoat";
+  outfit?: OutfitStyle;
   dialogue: string[];
-  dialogueRepeat?: string[]; // shorter dialogue shown after the first full conversation
-  legendaryReview?: string[]; // special path when player brings a legendary
+  dialogueRepeat?: string[]; // shown instead of `dialogue` after the first conversation
+  legendaryReview?: string[]; // shown once when the player brings a legendary
   choice?: NPCChoice;
-  repeatOffersChoice?: boolean; // show the choice again after the repeat dialogue
+  repeatOffersChoice?: boolean; // offer the choice again after `dialogueRepeat`
   givesPokemon?: string;
-  // "pokemon" draws the species sprite instead of a person (e.g. Codey).
-  sprite?: "person" | "pokemon";
-  speciesId?: string;
-  hideAfterGift?: boolean; // vanishes once its gift is taken (it joined your team)
-  wander?: WanderArea; // walks around inside this area
+  speciesId?: string; // drawn as this Pokemon instead of a person
+  hideAfterGift?: boolean; // disappears once its gift is taken
+  wander?: WanderArea;
   trainer?: TrainerBattle;
 }
 
@@ -66,7 +62,7 @@ const student = (
   mapId: MapId,
   start: [number, number],
   area: WanderArea,
-  look: { color: string; hair: string; outfit?: NPC["outfit"] },
+  look: { color: string; hair: string },
   dialogue: string[]
 ): NPC => ({
   id,
@@ -77,7 +73,7 @@ const student = (
   y: start[1],
   color: look.color,
   hair: look.hair,
-  outfit: look.outfit ?? "casual",
+  outfit: "casual",
   dialogue,
   wander: area,
 });
@@ -140,8 +136,8 @@ const wanderers: NPC[] = [
 ];
 
 // ============ TRAINERS ============
-// They stand still and ask for a battle. Beat them and they give you a Repel
-// Spray. Levels go up from the start of the map outward.
+// They stand still and ask for a battle, and give a Repel Spray when beaten.
+// Levels rise the further they are from the start.
 
 const trainer = (
   id: string,
@@ -170,7 +166,7 @@ const trainer = (
   choice: {
     question: `Battle ${name}?`,
     options: [
-      { label: "Battle!", action: "battle", responseLines: [] },
+      { label: "Battle!", startsBattle: true, responseLines: [] },
       { label: "Not now", responseLines: ["No worries. I'll be right here."] },
     ],
   },
@@ -289,7 +285,6 @@ const storyNPCs: NPC[] = [
     y: 4,
     color: "#5aaff5",
     hair: "#5aaff5",
-    sprite: "pokemon",
     speciesId: "codey",
     givesPokemon: "codey",
     hideAfterGift: true,
@@ -303,9 +298,13 @@ const storyNPCs: NPC[] = [
 
 export const npcs: NPC[] = [...storyNPCs, ...trainers, ...wanderers];
 
-export const npcsOnMap = (mapId: MapId): NPC[] => npcs.filter((n) => n.mapId === mapId);
+const NPCS_BY_MAP = Object.fromEntries(
+  Object.keys(MAPS).map((id) => [id, npcs.filter((n) => n.mapId === id)])
+) as Record<MapId, NPC[]>;
 
-// Catch placement mistakes at load time instead of in-game.
+export const npcsOnMap = (mapId: MapId): NPC[] => NPCS_BY_MAP[mapId];
+
+// Fail fast on placement mistakes instead of finding them in-game.
 const validateNPCs = () => {
   const taken = new Set<string>();
   for (const n of npcs) {
@@ -323,8 +322,8 @@ const validateNPCs = () => {
     if (a && (n.x < a.x || n.x >= a.x + a.w || n.y < a.y || n.y >= a.y + a.h)) {
       throw new Error(`NPC ${n.id} starts outside its wander area`);
     }
-    if (n.trainer && !SPECIES[n.trainer.pokemonId]) {
-      throw new Error(`Trainer ${n.id} has unknown Pokemon ${n.trainer.pokemonId}`);
+    for (const id of [n.trainer?.pokemonId, n.givesPokemon, n.speciesId]) {
+      if (id && !SPECIES[id]) throw new Error(`NPC ${n.id} refers to unknown Pokemon ${id}`);
     }
   }
 };

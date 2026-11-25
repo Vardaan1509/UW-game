@@ -1,10 +1,11 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 
-// Port 8081 so this can run alongside the portfolio dev server (8080).
+// The dev server only listens on this computer. To test on a phone on the same
+// Wi-Fi, run `npm run dev -- --host` instead.
 export default defineConfig({
   server: {
-    host: "::",
+    host: "localhost",
     port: 8081,
   },
   plugins: [react()],

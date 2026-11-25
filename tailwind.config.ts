@@ -1,8 +1,7 @@
 import type { Config } from "tailwindcss";
 import animate from "tailwindcss-animate";
 
-// Only the theme tokens the game uses (primary, border). The colors come from
-// CSS variables in src/index.css, matching the portfolio's light theme.
+// Theme colours are CSS variables defined in src/index.css.
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
