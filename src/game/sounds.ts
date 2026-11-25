@@ -202,6 +202,20 @@ class SoundEngine {
     [784, 988, 1175, 1568].forEach((n, i) => this.beep(n, 70, "square", 0.045, i * 0.06));
   }
 
+  // Footsteps echoing down the tunnel
+  tunnel() {
+    for (let i = 0; i < 6; i++) {
+      this.beep(150, 50, "square", 0.03, i * 0.3);
+      this.beep(150, 50, "square", 0.012, i * 0.3 + 0.12); // echo
+    }
+  }
+
+  // Being entered into the Hall of Fame
+  honour() {
+    const notes = [523, 659, 784, 1046, 784, 1046, 1319];
+    notes.forEach((n, i) => this.beep(n, 160, "triangle", 0.05, i * 0.15));
+  }
+
   // Walking through a door
   door() {
     this.beep(520, 50, "square", 0.04);

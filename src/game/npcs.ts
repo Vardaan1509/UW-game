@@ -265,11 +265,19 @@ const storyNPCs: NPC[] = [
       "Trainers around campus will battle you. Beat them and they'll give you a Repel Spray.",
       "North of E7 are the ION tracks. Only cross at the crossings, and wait if a train's coming.",
       "Past the tracks are DC, MC and SLC. MC is open, and I hear the CSC office inside has a surprise.",
+      "There's also a tunnel from MC to PAC, where the gym is.",
+      "And if you ever catch a legendary Pokemon, bring it back here to me.",
       "Here, take this goose to get started. Every Waterloo student ends up with one eventually.",
     ],
     dialogueRepeat: [
       "Hey again, {name}.",
-      "Head north across the ION tracks to MC. The CSC office is inside.",
+      "Head north across the ION tracks to MC. The CSC office is inside, and the tunnel to PAC.",
+    ],
+    legendaryReview: [
+      "Wait. {name}, is that a Compileon on your team?",
+      "Nobody catches one of those. I've been here for years and I've never seen one.",
+      "This belongs in the CSC Hall of Fame.",
+      "What name should go on your plaque?",
     ],
   },
   {

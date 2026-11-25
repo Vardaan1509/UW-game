@@ -10,6 +10,7 @@ import {
   warpAt,
   bumpMessage,
   examineMessage,
+  HALL_OF_FAME_SPOT,
   type Direction,
   type MapId,
   type Warp,
@@ -39,6 +40,7 @@ import BattleScreen from "./BattleScreen";
 import PokemonHUD from "./PokemonHUD";
 import NamePromptModal from "./NamePromptModal";
 import TouchControls, { type TouchDir } from "./TouchControls";
+import TunnelOverlay from "./TunnelOverlay";
 
 const DIRS: Record<Direction, { dx: number; dy: number }> = {
   0: { dx: 0, dy: 1 },
@@ -49,10 +51,8 @@ const DIRS: Record<Direction, { dx: number; dy: number }> = {
 const OPPOSITE: Record<Direction, Direction> = { 0: 1, 1: 0, 2: 3, 3: 2 };
 
 const MOVE_MS = 160;
-const CUSTOM_NPC_MOVE_MS = 260;
 const ENCOUNTER_CHANCE = 0.28;
 const REPELLENT_MS = 30_000;
-const CUSTOM_NPC_SPAWN = { x: 18, y: 12 };
 const FADE_MS = 200;
 const TOAST_MS = 2400;
 const BUMP_COOLDOWN_MS = 1200;
@@ -173,27 +173,14 @@ const choiceAvailable = (s: DialogueState): boolean =>
 // land on the dialogue box and skip the first line. Ignore advances this soon.
 const OPEN_GUARD_MS = 350;
 
-interface CustomNPC {
-  id: string;
+// The trainer honoured in the CSC Hall of Fame after catching a legendary.
+// Only one per game. They stand on the pedestal in the CSC office.
+interface HonouredTrainer {
   name: string;
-  tileX: number;
-  tileY: number;
-  fromX: number;
-  fromY: number;
-  toX: number;
-  toY: number;
-  moveStart: number;
-  moving: boolean;
-  facing: Direction;
-  walkFrame: number;
-  color: string;
-  hair: string;
-  outfit: OutfitStyle;
-  lastMoveTime: number;
-  lastGreetTime: number;
 }
-
-const CUSTOM_NPC_COLORS = ["#f87171", "#60a5fa", "#a3e635", "#fbbf24", "#c084fc"];
+const HONOURED_SHIRT = "#d4a72c";
+const HONOURED_HAIR = "#1a1008";
+const HONOURED_OUTFIT: OutfitStyle = "trainer";
 
 const ExploreGame = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -211,10 +198,12 @@ const ExploreGame = () => {
   const [showNamePrompt, setShowNamePrompt] = useState(false);
   // null until the player enters a name on the opening screen.
   const [playerName, setPlayerName] = useState<string | null>(null);
-  const [customNPCs, setCustomNPCs] = useState<CustomNPC[]>([]);
+  const [honoured, setHonoured] = useState<HonouredTrainer | null>(null);
   const [legendaryReviewed, setLegendaryReviewed] = useState(false);
   const [isTouch, setIsTouch] = useState(false);
   const [fading, setFading] = useState(false);
+  // Set while the tunnel animation plays between MC and PAC.
+  const [tunnel, setTunnel] = useState<{ caption: string; warp: Warp } | null>(null);
 
   const talkedTo = useRef<Set<string>>(new Set());
   const giftGiven = useRef<Set<string>>(new Set());
@@ -251,8 +240,8 @@ const ExploreGame = () => {
   faintedRef.current = fainted;
   const repellentExpiresRef = useRef<number | null>(null);
   repellentExpiresRef.current = repellentExpires;
-  const customNPCsRef = useRef<CustomNPC[]>([]);
-  customNPCsRef.current = customNPCs;
+  const honouredRef = useRef<HonouredTrainer | null>(null);
+  honouredRef.current = honoured;
   const legendaryReviewedRef = useRef(false);
   legendaryReviewedRef.current = legendaryReviewed;
   const showNamePromptRef = useRef(false);
@@ -341,7 +330,23 @@ const ExploreGame = () => {
     placePlayer(SPAWN.x, SPAWN.y, SPAWN.facing);
   }, [placePlayer]);
 
-  // Fade to black, move to the warp's destination, fade back in.
+  // Move to the warp's destination and fade back in.
+  const arriveAt = useCallback(
+    (w: Warp) => {
+      mapIdRef.current = w.to;
+      placePlayer(w.toX, w.toY, w.facing);
+      showToast(MAPS[w.to].name);
+      // Let the new map draw one frame before fading back in.
+      requestAnimationFrame(() => {
+        setFading(false);
+        fadingRef.current = false;
+      });
+    },
+    [placePlayer, showToast]
+  );
+
+  // Fade to black, then either play the tunnel animation or arrive straight away.
+  // fadingRef stays true the whole time so the player can't move.
   const warpTo = useCallback(
     (w: Warp) => {
       if (fadingRef.current) return;
@@ -349,18 +354,26 @@ const ExploreGame = () => {
       setFading(true);
       sounds.door();
       window.setTimeout(() => {
-        mapIdRef.current = w.to;
-        placePlayer(w.toX, w.toY, w.facing);
-        showToast(MAPS[w.to].name);
-        // Let the new map draw one frame before fading back in.
-        requestAnimationFrame(() => {
-          setFading(false);
-          fadingRef.current = false;
-        });
+        if (w.tunnel) {
+          sounds.tunnel();
+          setTunnel({ caption: w.tunnel, warp: w });
+        } else {
+          arriveAt(w);
+        }
       }, FADE_MS);
     },
-    [placePlayer, showToast]
+    [arriveAt]
   );
+
+  const tunnelRef = useRef<typeof tunnel>(null);
+  tunnelRef.current = tunnel;
+  const finishTunnel = useCallback(() => {
+    const current = tunnelRef.current;
+    if (!current) return;
+    tunnelRef.current = null;
+    setTunnel(null);
+    arriveAt(current.warp);
+  }, [arriveAt]);
 
   // The NPC standing on (x, y), using their live position. A walking NPC
   // occupies both the tile they're leaving and the tile they're heading to.
@@ -373,9 +386,11 @@ const ExploreGame = () => {
     });
   }, []);
 
-  const findCustomNPCAt = useCallback((x: number, y: number): CustomNPC | undefined => {
-    if (mapIdRef.current !== "campus") return undefined;
-    return customNPCsRef.current.find((c) => c.tileX === x && c.tileY === y);
+  // The honoured trainer, if (x, y) is their pedestal in the CSC office.
+  const honouredAt = useCallback((x: number, y: number): HonouredTrainer | null => {
+    if (mapIdRef.current !== "csc") return null;
+    if (x !== HALL_OF_FAME_SPOT.x || y !== HALL_OF_FAME_SPOT.y) return null;
+    return honouredRef.current;
   }, []);
 
   const startEncounter = useCallback(() => {
@@ -430,7 +445,6 @@ const ExploreGame = () => {
         return;
       }
       if (npcAt(nx, ny)) return;
-      if (findCustomNPCAt(nx, ny)) return;
       if (tile === "trackCrossing") {
         const train = trainsRef.current!.find((t) => t.row === ny);
         if (train && trainNear(train, nx, TRAIN_ENTRY_MARGIN)) {
@@ -450,7 +464,7 @@ const ExploreGame = () => {
       p.walkFrame = p.walkFrame === 0 ? 1 : 0;
       sounds.step();
     },
-    [bump, findCustomNPCAt, npcAt, warpTo]
+    [bump, npcAt, warpTo]
   );
 
   const finishDialogueWithNPC = useCallback(
@@ -547,19 +561,19 @@ const ExploreGame = () => {
     [showToast]
   );
 
-  const openCustomNPCDialogue = useCallback((custom: CustomNPC) => {
+  const openHonouredDialogue = useCallback((h: HonouredTrainer) => {
     const tempNPC: NPC = {
-      id: `custom-${custom.id}`,
-      name: custom.name,
-      role: "Trainer",
-      mapId: "campus",
-      x: custom.tileX,
-      y: custom.tileY,
-      color: custom.color,
-      hair: custom.hair,
+      id: "honoured",
+      name: h.name,
+      role: "Hall of Fame",
+      mapId: "csc",
+      x: HALL_OF_FAME_SPOT.x,
+      y: HALL_OF_FAME_SPOT.y,
+      color: HONOURED_SHIRT,
+      hair: HONOURED_HAIR,
       dialogue: [
-        `Hey! I'm ${custom.name}.`,
-        "I got added to the trainer registry after catching a Compileon.",
+        `I'm ${h.name}, the trainer who caught a Compileon.`,
+        "My name's on the plaque now. Not bad, right?",
         "Good luck out there.",
       ],
     };
@@ -639,18 +653,22 @@ const ExploreGame = () => {
       return;
     }
 
-    const custom = findCustomNPCAt(nx, ny);
-    if (custom) {
-      openCustomNPCDialogue(custom);
+    const h = honouredAt(nx, ny);
+    if (h) {
+      openHonouredDialogue(h);
       return;
     }
 
     // Look at whatever you're facing (doors you can enter are left alone).
     if (!warpAt(map, nx, ny)) {
-      const msg = examineMessage(map, nx, ny);
+      const tile = map.tiles[ny]?.[nx];
+      const msg =
+        tile === "hallOfFame" && honouredRef.current
+          ? `CSC Hall of Fame. ${honouredRef.current.name}: caught a legendary Compileon.`
+          : examineMessage(map, nx, ny);
       if (msg) showToast(msg);
     }
-  }, [advanceDialogue, findCustomNPCAt, npcAt, openCustomNPCDialogue, showToast]);
+  }, [advanceDialogue, honouredAt, npcAt, openHonouredDialogue, showToast]);
 
   // Keyboard
   useEffect(() => {
@@ -784,7 +802,7 @@ const ExploreGame = () => {
         if (mapId === "campus" && nx === SPAWN.x && ny === SPAWN.y) continue;
         const playerThere =
           (p.tileX === nx && p.tileY === ny) || (p.moving && p.fromX === nx && p.fromY === ny);
-        if (playerThere || npcAt(nx, ny, mapId) || findCustomNPCAt(nx, ny)) continue;
+        if (playerThere || npcAt(nx, ny, mapId)) continue;
 
         s.fromX = s.tileX;
         s.fromY = s.tileY;
@@ -795,59 +813,6 @@ const ExploreGame = () => {
         s.moveStart = now;
         s.moving = true;
         s.walkFrame = s.walkFrame === 0 ? 1 : 0;
-      }
-    },
-    [npcAt, findCustomNPCAt]
-  );
-
-  // Wandering AI for trainers added after the legendary review (campus only).
-  const updateCustomNPCs = useCallback(
-    (now: number) => {
-      const player = playerRef.current;
-      const campus = MAPS.campus;
-      for (const c of customNPCsRef.current) {
-        if (c.moving) {
-          const t = Math.min(1, (now - c.moveStart) / CUSTOM_NPC_MOVE_MS);
-          if (t >= 1) {
-            c.moving = false;
-            c.fromX = c.toX;
-            c.fromY = c.toY;
-          }
-          continue;
-        }
-        // Try to move every 2.5-4 seconds
-        if (now - c.lastMoveTime > 2500 + Math.random() * 1500) {
-          c.lastMoveTime = now;
-          const dir = Math.floor(Math.random() * 4) as Direction;
-          const { dx, dy } = DIRS[dir];
-          const nx = c.tileX + dx;
-          const ny = c.tileY + dy;
-          c.facing = dir;
-          const tile = campus.tiles[ny]?.[nx];
-          const playerHere =
-            mapIdRef.current === "campus" && player.tileX === nx && player.tileY === ny;
-          const validTile =
-            tile !== undefined &&
-            !isSolid(tile) &&
-            !isTallGrass(tile) &&
-            tile !== "trackCrossing" &&
-            !npcAt(nx, ny, "campus") &&
-            !customNPCsRef.current.some((o) => o !== c && o.tileX === nx && o.tileY === ny) &&
-            !playerHere &&
-            // Keep the spawn tile free so a respawning player never overlaps them.
-            !(nx === SPAWN.x && ny === SPAWN.y);
-          if (validTile) {
-            c.fromX = c.tileX;
-            c.fromY = c.tileY;
-            c.toX = nx;
-            c.toY = ny;
-            c.tileX = nx;
-            c.tileY = ny;
-            c.moveStart = now;
-            c.moving = true;
-            c.walkFrame = c.walkFrame === 0 ? 1 : 0;
-          }
-        }
       }
     },
     [npcAt]
@@ -910,7 +875,6 @@ const ExploreGame = () => {
 
       updateTrains(now, dt);
       updateNPCs(now, !blocked);
-      if (!blocked && onCampus) updateCustomNPCs(now);
 
       // Camera: follow the player, clamp to the map, centre small maps.
       const logicalW = window.innerWidth;
@@ -1046,46 +1010,24 @@ const ExploreGame = () => {
         });
       }
 
-      if (onCampus) {
-        for (const c of customNPCsRef.current) {
-          let cx = c.tileX;
-          let cy = c.tileY;
-          if (c.moving) {
-            const t = Math.min(1, (now - c.moveStart) / CUSTOM_NPC_MOVE_MS);
-            cx = c.fromX + (c.toX - c.fromX) * t;
-            cy = c.fromY + (c.toY - c.fromY) * t;
-          }
-          if (!visible(cx, cy)) continue;
-          drawables.push({
-            y: cy,
-            draw: () => {
-              const npx = cx * TILE_SIZE - camPxX;
-              const npy = cy * TILE_SIZE - camPxY;
-              drawCharacter(
-                ctx,
-                npx,
-                npy,
-                c.color,
-                c.hair,
-                c.facing,
-                c.moving ? c.walkFrame : 0,
-                null,
-                c.outfit
-              );
-              drawNameLabel(ctx, npx + TILE_SIZE / 2, npy - 4, c.name, "#facc15");
-
-              // Occasional "Hi!" bubble when the player is near
-              const nearby = Math.abs(c.tileX - p.tileX) <= 3 && Math.abs(c.tileY - p.tileY) <= 3;
-              if (nearby && now - c.lastGreetTime > 6000) c.lastGreetTime = now;
-              if (nearby && now - c.lastGreetTime < 1800) {
-                drawSpeechBubble(ctx, npx + TILE_SIZE / 2, npy - 22, "Hi!");
-              }
-              if (!blocked && isFacingPlayer(c.tileX, c.tileY)) {
-                drawHint(ctx, npx + TILE_SIZE / 2, npy - 6, now);
-              }
-            },
-          });
-        }
+      // The honoured trainer, standing on the Hall of Fame pedestal.
+      const h = honouredRef.current;
+      if (h && map.id === "csc") {
+        const hx = HALL_OF_FAME_SPOT.x;
+        const hy = HALL_OF_FAME_SPOT.y;
+        drawables.push({
+          y: hy,
+          draw: () => {
+            const npx = hx * TILE_SIZE - camPxX;
+            const npy = hy * TILE_SIZE - camPxY - 6; // raised onto the pedestal
+            drawSparkles(ctx, npx + TILE_SIZE / 2, npy + TILE_SIZE / 2, now);
+            drawCharacter(ctx, npx, npy, HONOURED_SHIRT, HONOURED_HAIR, 0, 0, null, HONOURED_OUTFIT);
+            drawNameLabel(ctx, npx + TILE_SIZE / 2, npy - 4, h.name, "#facc15");
+            if (!blocked && isFacingPlayer(hx, hy)) {
+              drawHint(ctx, npx + TILE_SIZE / 2, npy - 20, now);
+            }
+          },
+        });
       }
 
       drawables.push({
@@ -1119,7 +1061,7 @@ const ExploreGame = () => {
 
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [tryMove, onStepComplete, updateTrains, updateNPCs, updateCustomNPCs]);
+  }, [tryMove, onStepComplete, updateTrains, updateNPCs]);
 
   const handleBattleEnd = useCallback(
     (r: "win" | "lose", leveledUp: string[]) => {
@@ -1158,7 +1100,12 @@ const ExploreGame = () => {
         const name = battle.wild.species.name;
         const existing = teamRef.current.find((p) => p.species.id === battle.wild.species.id);
         setTeam((prev) => addToTeam(prev, battle.wild));
-        const legendaryNote = battle.wild.species.isLegendary ? " It's a legendary!" : "";
+        const legendaryNote =
+          battle.wild.species.isLegendary && !legendaryReviewedRef.current
+            ? " It's a legendary! Show it to Vardaan outside E7."
+            : battle.wild.species.isLegendary
+              ? " It's a legendary!"
+              : "";
         showToast(
           existing
             ? `Caught another ${name}! Your ${name} is now Lv ${Math.min(MAX_LEVEL, levelAfter(existing) + battle.wild.level)}.${legendaryNote}`
@@ -1202,33 +1149,13 @@ const ExploreGame = () => {
     showToast("Used a Repel Spray. Wild Pokemon will stay away for 30 seconds.");
   }, [showToast]);
 
-  const handleNameSubmit = useCallback(
+  // After Vardaan's legendary review: put the trainer in the Hall of Fame.
+  const handleHonourSubmit = useCallback(
     (name: string) => {
-      const c = CUSTOM_NPC_COLORS[Math.floor(Math.random() * CUSTOM_NPC_COLORS.length)];
-      const now = performance.now();
-      const newNPC: CustomNPC = {
-        id: `${Date.now()}`,
-        name,
-        tileX: CUSTOM_NPC_SPAWN.x,
-        tileY: CUSTOM_NPC_SPAWN.y,
-        fromX: CUSTOM_NPC_SPAWN.x,
-        fromY: CUSTOM_NPC_SPAWN.y,
-        toX: CUSTOM_NPC_SPAWN.x,
-        toY: CUSTOM_NPC_SPAWN.y,
-        moveStart: now,
-        moving: false,
-        facing: 0,
-        walkFrame: 0,
-        color: c,
-        hair: "#1a1008",
-        outfit: "trainer",
-        lastMoveTime: now,
-        lastGreetTime: 0,
-      };
-      setCustomNPCs((prev) => [...prev, newNPC]);
+      setHonoured({ name });
       setShowNamePrompt(false);
-      sounds.victory();
-      showToast(`Welcome to the world, ${name}!`);
+      sounds.honour();
+      showToast(`${name} is in the CSC Hall of Fame! Visit the CSC office in MC.`);
     },
     [showToast]
   );
@@ -1318,12 +1245,21 @@ const ExploreGame = () => {
       )}
 
       {showNamePrompt && (
-        <NamePromptModal onSubmit={handleNameSubmit} initialValue={playerName ?? ""} />
+        <NamePromptModal
+          eyebrow="Vardaan asks"
+          title="What name goes in the Hall of Fame?"
+          footer="You'll be honoured in the CSC office inside MC."
+          buttonLabel="Honour me"
+          initialValue={playerName ?? ""}
+          onSubmit={handleHonourSubmit}
+        />
       )}
+
+      {tunnel && <TunnelOverlay caption={tunnel.caption} onDone={finishTunnel} />}
 
       {/* On-screen controls for touch devices. Hidden during battle, name entry,
           and dialogue (those have their own UI; tap the dialogue box to advance). */}
-      {isTouch && playerName !== null && !battle && !showNamePrompt && !dialogue && (
+      {isTouch && playerName !== null && !battle && !showNamePrompt && !dialogue && !tunnel && (
         <TouchControls onPress={pressDir} onRelease={releaseDir} onAction={interact} />
       )}
     </div>
@@ -1392,18 +1328,17 @@ const drawNameLabel = (
   ctx.fillText(text, cx, baseY);
 };
 
-const drawSpeechBubble = (ctx: CanvasRenderingContext2D, cx: number, cy: number, text: string) => {
-  ctx.font = "bold 10px monospace";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  const w = ctx.measureText(text).width;
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(cx - w / 2 - 4, cy - 10, w + 8, 14);
-  ctx.strokeStyle = "#1e293b";
-  ctx.lineWidth = 1;
-  ctx.strokeRect(cx - w / 2 - 4, cy - 10, w + 8, 14);
-  ctx.fillStyle = "#1e293b";
-  ctx.fillText(text, cx, cy - 3);
+// Gold sparkles circling the honoured trainer.
+const drawSparkles = (ctx: CanvasRenderingContext2D, cx: number, cy: number, now: number) => {
+  for (let i = 0; i < 6; i++) {
+    const a = now / 900 + (i * Math.PI * 2) / 6;
+    const r = 18 + Math.sin(now / 400 + i) * 3;
+    const x = cx + Math.cos(a) * r;
+    const y = cy + Math.sin(a) * r * 0.6;
+    const s = 1.5 + ((Math.sin(now / 200 + i * 2) + 1) / 2) * 1.5;
+    ctx.fillStyle = i % 2 === 0 ? "#fde68a" : "#facc15";
+    ctx.fillRect(x - s / 2, y - s / 2, s, s);
+  }
 };
 
 interface DialogueBoxProps {

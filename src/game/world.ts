@@ -42,9 +42,33 @@ export type TileType =
   | "desk"
   | "couch"
   | "bookshelf"
-  | "bench";
+  | "bench"
+  | "doorTunnel"
+  | "hallOfFame"
+  | "pedestal"
+  // PAC (royal gym hall)
+  | "royalTop"
+  | "royalWall"
+  | "royalBanner"
+  | "royalSconce"
+  | "royalCrest"
+  | "pillar"
+  | "throne"
+  | "dais"
+  | "daisFace"
+  | "balustrade"
+  | "banister"
+  | "stairsGrand"
+  | "stairsGrandRunner"
+  | "marble"
+  | "carpetL"
+  | "carpetC"
+  | "carpetR"
+  | "topiary"
+  | "doorRoyal"
+  | "doorGrand";
 
-export type MapId = "campus" | "mc" | "csc";
+export type MapId = "campus" | "mc" | "csc" | "pac";
 
 export interface Building {
   x: number;
@@ -66,6 +90,7 @@ export interface Warp {
   toX: number;
   toY: number;
   facing: Direction;
+  tunnel?: string; // play the tunnel animation with this caption
 }
 
 // A small name plate drawn above tile (x, y), e.g. the sign over the CSC door.
@@ -306,6 +331,30 @@ const LEGEND: Record<string, TileType> = {
   c: "couch",
   k: "bookshelf",
   b: "bench",
+  U: "doorTunnel",
+  H: "hallOfFame",
+  P: "pedestal",
+  // PAC
+  A: "royalTop",
+  Q: "royalWall",
+  F: "royalBanner",
+  O: "royalSconce",
+  K: "royalCrest",
+  I: "pillar",
+  J: "throne",
+  Z: "dais",
+  Y: "daisFace",
+  V: "balustrade",
+  X: "banister",
+  G: "stairsGrand",
+  g: "stairsGrandRunner",
+  m: "marble",
+  "[": "carpetL",
+  _: "carpetC",
+  "]": "carpetR",
+  t: "topiary",
+  R: "doorRoyal",
+  D: "doorGrand",
 };
 
 const parseRows = (id: string, rows: string[]): TileType[][] => {
@@ -323,10 +372,10 @@ const parseRows = (id: string, rows: string[]): TileType[][] => {
 };
 
 // MC hallway: stairs in the corner, a row of office doors, and a rug that
-// leads from the entrance to the CSC office door (C).
+// leads from the entrance to the CSC office door (C). U is the tunnel to PAC.
 const MC_ROWS = [
   "#^^^^^^^^^^^^^^^^^^#",
-  "#SS==L=N=L===C==L==#",
+  "#SS==L=N=L===C==U==#",
   "#SS..........r...p.#",
   "#.........rrrr.....#",
   "#.........r........#",
@@ -339,21 +388,47 @@ const MC_ROWS = [
   "##########E#########",
 ];
 const MC_CSC_DOOR = { x: 13, y: 1 };
+const MC_TUNNEL_DOOR = { x: 16, y: 1 };
 const MC_EXIT = { x: 10, y: 11 };
 
 // CSC office: computers along the back wall, a couch, and Codey on the rug.
+// H is the Hall of Fame plaque; P is the pedestal an honoured trainer stands on.
 const CSC_ROWS = [
   "#^^^^^^^^^^^#",
-  "#=W=N=B===W=#",
+  "#=W=N=B===H=#",
   "#kddd...dddp#",
   "#k..........#",
-  "#....rrr....#",
+  "#....rrr..P.#",
   "#....rrr....#",
   "#.......ccc.#",
   "#p..........#",
   "######E######",
 ];
 const CSC_EXIT = { x: 6, y: 8 };
+export const HALL_OF_FAME_SPOT = { x: 10, y: 4 };
+
+// PAC: a grand gym hall. A red carpet runs from the entrance up a wide
+// staircase to a raised platform with the Gym Leader's throne. Pillars,
+// banners and torches line the hall, and three doors sit along the bottom wall.
+const PAC_ROWS = [
+  "#AAAAAAAAAAAAAAAAAAA#",
+  "#QFQOQFQOQKQOQFQOQFQ#",
+  "#IZZZZZZZZJZZZZZZZZI#",
+  "#IZZZZZZZZZZZZZZZZZI#",
+  "#IVVVVVVVZZZVVVVVVVI#",
+  "#YYYYYYYXGgGXYYYYYYY#",
+  "#YYYYYYYXGgGXYYYYYYY#",
+  "#YYYYYYYXGgGXYYYYYYY#",
+  "#tmmImmmm[_]mmmmImmt#",
+  "#mmmmmmmm[_]mmmmmmmm#",
+  "#tmmImmmm[_]mmmmImmt#",
+  "#mmmmmmmm[_]mmmmmmmm#",
+  "#tmmImmmm[_]mmmmImmt#",
+  "#mmmmmmmm[_]mmmmmmmm#",
+  "#mmmmmmmm[_]mmmmmmmm#",
+  "#QQQRQQQQQDQQQQQRQQQ#",
+];
+const PAC_ENTRANCE = { x: 10, y: 15 };
 
 const makeInterior = (
   id: MapId,
@@ -398,10 +473,22 @@ export const MAPS: Record<MapId, GameMap> = {
     "mc",
     "MC: Mathematics & Computer Building",
     MC_ROWS,
-    [{ x: MC_CSC_DOOR.x, y: MC_CSC_DOOR.y, text: "CSC", accent: "#3b82f6" }],
+    [
+      { x: MC_CSC_DOOR.x, y: MC_CSC_DOOR.y, text: "CSC", accent: "#3b82f6" },
+      { x: MC_TUNNEL_DOOR.x, y: MC_TUNNEL_DOOR.y, text: "PAC", accent: "#eab308" },
+    ],
     [
       { x: MC_EXIT.x, y: MC_EXIT.y, to: "campus", toX: MC_DOOR.x, toY: MC_DOOR.y + 1, facing: 0 },
       { x: MC_CSC_DOOR.x, y: MC_CSC_DOOR.y, to: "csc", toX: CSC_EXIT.x, toY: CSC_EXIT.y - 1, facing: 1 },
+      {
+        x: MC_TUNNEL_DOOR.x,
+        y: MC_TUNNEL_DOOR.y,
+        to: "pac",
+        toX: PAC_ENTRANCE.x,
+        toY: PAC_ENTRANCE.y - 1,
+        facing: 1,
+        tunnel: "Walking through the tunnel to PAC...",
+      },
     ]
   ),
   csc: makeInterior(
@@ -411,6 +498,26 @@ export const MAPS: Record<MapId, GameMap> = {
     [],
     [{ x: CSC_EXIT.x, y: CSC_EXIT.y, to: "mc", toX: MC_CSC_DOOR.x, toY: MC_CSC_DOOR.y + 1, facing: 0 }]
   ),
+  pac: {
+    ...makeInterior(
+      "pac",
+      "PAC: Physical Activities Complex",
+      PAC_ROWS,
+      [],
+      [
+        {
+          x: PAC_ENTRANCE.x,
+          y: PAC_ENTRANCE.y,
+          to: "mc",
+          toX: MC_TUNNEL_DOOR.x,
+          toY: MC_TUNNEL_DOOR.y + 1,
+          facing: 0,
+          tunnel: "Walking back through the tunnel to MC...",
+        },
+      ]
+    ),
+    background: "#140a0e",
+  },
 };
 
 // ============ RULES ============
@@ -426,6 +533,13 @@ const WALKABLE = new Set<TileType>([
   "trackCrossing",
   "floor",
   "rug",
+  "dais",
+  "stairsGrand",
+  "stairsGrandRunner",
+  "marble",
+  "carpetL",
+  "carpetC",
+  "carpetR",
 ]);
 
 export const isSolid = (tile: TileType): boolean => !WALKABLE.has(tile);
@@ -447,6 +561,12 @@ export const bumpMessage = (map: GameMap, x: number, y: number): string | null =
     }
     case "doorLocked":
       return "This door is locked.";
+    case "doorRoyal":
+      return "This door is locked for now.";
+    case "daisFace":
+    case "balustrade":
+    case "banister":
+      return "The platform is too high. Take the stairs.";
     case "stairs":
       return "The upper floors are closed off for now.";
     case "track":
@@ -468,6 +588,14 @@ const EXAMINE_TEXT: Partial<Record<TileType, string>> = {
   crossbuck: "ION crossing. Look both ways.",
   sign: "A campus sign. You are here.",
   water: "A pond. The geese love it here.",
+  hallOfFame: "CSC Hall of Fame. Trainers who catch a legendary are honoured here.",
+  pedestal: "An empty pedestal. The plaque reads: reserved for a trainer who catches a legendary.",
+  throne: "The Gym Leader's throne. Nobody's here yet.",
+  royalCrest: "A gold crest. This is where the Waterloo Gym Leaders battle.",
+  royalBanner: "A black and gold banner.",
+  royalSconce: "A torch flickers on the wall.",
+  pillar: "A marble pillar with a gold capital.",
+  topiary: "A neatly trimmed topiary in a gold pot.",
 };
 
 // Shown when the player faces something and presses the action button.

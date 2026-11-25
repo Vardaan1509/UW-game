@@ -554,6 +554,366 @@ const drawBench = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
   P(ctx, x, y, 8, 5.8, 1, 3, "#4a3a2a");
 };
 
+// Tiles whose look changes with the 400 ms animation tick.
+const ANIMATED_TILES = new Set<TileType>(["water", "royalSconce"]);
+
+// ============ TUNNEL DOOR & HALL OF FAME ============
+
+const drawTunnelDoor = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  drawWall(ctx, x, y);
+  // Stone arch
+  P(ctx, x, y, 1.5, 1, 7, 9, "#6b6560");
+  P(ctx, x, y, 2.5, 0.6, 5, 0.6, "#6b6560");
+  P(ctx, x, y, 1.5, 1, 0.5, 9, "#8a837c");
+  P(ctx, x, y, 8, 1, 0.5, 9, "#4f4a45");
+  // Dark opening with steps going down into it
+  P(ctx, x, y, 2.5, 1.8, 5, 8.2, "#0d0b10");
+  P(ctx, x, y, 2.5, 7.4, 5, 0.6, "#3a3540");
+  P(ctx, x, y, 2.5, 8.6, 5, 0.6, "#4a4550");
+  P(ctx, x, y, 2.5, 9.6, 5, 0.4, "#5a5560");
+  // A faint warm light far down the tunnel
+  P(ctx, x, y, 4.4, 3.4, 1.2, 1.2, "#5a4318");
+  P(ctx, x, y, 4.7, 3.7, 0.6, 0.6, "#f0c050");
+};
+
+const drawHallOfFame = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  drawWall(ctx, x, y);
+  // Gold-framed plaque with a star
+  P(ctx, x, y, 1, 1.6, 8, 6, "#8a6a1c");
+  P(ctx, x, y, 1.4, 2, 7.2, 5.2, "#e0b84a");
+  P(ctx, x, y, 2, 2.6, 6, 4, "#3a2a12");
+  P(ctx, x, y, 4.5, 3.1, 1, 3, "#f6d670");
+  P(ctx, x, y, 3.3, 4.1, 3.4, 1, "#f6d670");
+  P(ctx, x, y, 3.9, 3.6, 2.2, 2, "#f6d670");
+  P(ctx, x, y, 2.6, 6, 4.8, 0.3, "#c99a30");
+};
+
+const drawPedestal = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  drawFloor(ctx, x, y);
+  // Round marble plinth with a gold rim
+  ctx.fillStyle = "rgba(0,0,0,0.2)";
+  ctx.beginPath();
+  ctx.ellipse(x + 5 * PIX, y + 8.6 * PIX, 4.4 * PIX, 1.2 * PIX, 0, 0, Math.PI * 2);
+  ctx.fill();
+  P(ctx, x, y, 1, 4.6, 8, 4, "#d8d4ce");
+  P(ctx, x, y, 1, 4.6, 8, 0.8, "#c9a23a");
+  P(ctx, x, y, 1, 8, 8, 0.6, "#a8a29a");
+  P(ctx, x, y, 1.6, 5.6, 0.6, 2.4, "#ece9e4");
+  ctx.fillStyle = "#e8c860";
+  ctx.beginPath();
+  ctx.ellipse(x + 5 * PIX, y + 4.6 * PIX, 4 * PIX, 1.1 * PIX, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#f2efe9";
+  ctx.beginPath();
+  ctx.ellipse(x + 5 * PIX, y + 4.5 * PIX, 3.4 * PIX, 0.8 * PIX, 0, 0, Math.PI * 2);
+  ctx.fill();
+};
+
+// ============ PAC (ROYAL GYM HALL) ============
+// Deep crimson walls, gold trim, black-and-gold banners (Waterloo colours),
+// white marble floors and a red carpet with gold borders.
+
+const ROYAL = {
+  wall: "#7a1f2b",
+  wallDark: "#5a1520",
+  wallLight: "#93303c",
+  gold: "#d9aa3a",
+  goldLight: "#f3d27a",
+  goldDark: "#8f6a1a",
+  black: "#18141a",
+  marble: "#ece8e0",
+  marbleDark: "#d2ccc0",
+  marbleVein: "#c4bdb0",
+  carpet: "#a3192c",
+  carpetDark: "#7e1222",
+  carpetLight: "#c22a3e",
+};
+
+const drawRoyalTop = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  ctx.fillStyle = "#2a1016";
+  ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+  // Coffered ceiling edge with a gold cornice
+  P(ctx, x, y, 1, 1.5, 8, 4.5, "#3a161e");
+  P(ctx, x, y, 1.5, 2, 7, 3.5, "#2e1218");
+  P(ctx, x, y, 0, 7.4, 10, 0.6, ROYAL.goldDark);
+  P(ctx, x, y, 0, 8, 10, 1.2, ROYAL.gold);
+  P(ctx, x, y, 0, 8, 10, 0.4, ROYAL.goldLight);
+  for (let i = 0; i < 5; i++) P(ctx, x, y, 0.6 + i * 2, 9.2, 0.8, 0.8, ROYAL.goldDark);
+};
+
+const drawRoyalWall = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  ctx.fillStyle = ROYAL.wall;
+  ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+  // Damask pattern
+  P(ctx, x, y, 2, 1.5, 1, 1, ROYAL.wallLight);
+  P(ctx, x, y, 7, 1.5, 1, 1, ROYAL.wallLight);
+  P(ctx, x, y, 4.5, 3.5, 1, 1, ROYAL.wallLight);
+  // Gold chair rail and dark wainscot
+  P(ctx, x, y, 0, 6, 10, 0.6, ROYAL.gold);
+  P(ctx, x, y, 0, 6.6, 10, 3.4, ROYAL.wallDark);
+  P(ctx, x, y, 1, 7.2, 3.4, 2.2, "#4a1018");
+  P(ctx, x, y, 5.6, 7.2, 3.4, 2.2, "#4a1018");
+  P(ctx, x, y, 0, 9.6, 10, 0.4, ROYAL.goldDark);
+};
+
+const drawRoyalBanner = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  drawRoyalWall(ctx, x, y);
+  // Gold rod
+  P(ctx, x, y, 1.6, 0.4, 6.8, 0.6, ROYAL.gold);
+  P(ctx, x, y, 1.2, 0.3, 0.6, 0.8, ROYAL.goldLight);
+  P(ctx, x, y, 8.2, 0.3, 0.6, 0.8, ROYAL.goldLight);
+  // Black banner with a gold stripe and a swallowtail
+  P(ctx, x, y, 2.4, 1, 5.2, 7, ROYAL.black);
+  P(ctx, x, y, 2.4, 1, 0.4, 7, ROYAL.gold);
+  P(ctx, x, y, 7.2, 1, 0.4, 7, ROYAL.gold);
+  P(ctx, x, y, 3.8, 1, 2.4, 7.6, ROYAL.gold);
+  P(ctx, x, y, 4.3, 1, 1.4, 7.6, "#f0c94e");
+  P(ctx, x, y, 2.4, 8, 2, 0.8, ROYAL.black);
+  P(ctx, x, y, 5.6, 8, 2, 0.8, ROYAL.black);
+};
+
+const drawRoyalSconce = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  animFrame: number
+) => {
+  drawRoyalWall(ctx, x, y);
+  // Warm glow on the wall
+  ctx.fillStyle = "rgba(255, 190, 90, 0.22)";
+  ctx.beginPath();
+  ctx.arc(x + 5 * PIX, y + 2.6 * PIX, 3.6 * PIX, 0, Math.PI * 2);
+  ctx.fill();
+  // Gold bracket and cup
+  P(ctx, x, y, 4.5, 4, 1, 2, ROYAL.goldDark);
+  P(ctx, x, y, 3.5, 3.4, 3, 0.8, ROYAL.gold);
+  P(ctx, x, y, 3.8, 4.2, 2.4, 0.4, ROYAL.goldLight);
+  // Flame (two frames so it flickers)
+  const lean = animFrame === 0 ? 0 : 0.3;
+  P(ctx, x, y, 4 + lean, 1.4, 2, 2, "#ff8a1e");
+  P(ctx, x, y, 4.3 + lean, 0.8, 1.4, 1.2, "#ffb43c");
+  P(ctx, x, y, 4.6 + lean, 1.8, 0.8, 1.4, "#fff2a8");
+};
+
+const drawRoyalCrest = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  drawRoyalWall(ctx, x, y);
+  // Gold shield with a black field and a gold chevron
+  P(ctx, x, y, 2, 0.8, 6, 5.4, ROYAL.goldDark);
+  P(ctx, x, y, 2.4, 1.2, 5.2, 4.6, ROYAL.gold);
+  P(ctx, x, y, 3, 1.8, 4, 3.4, ROYAL.black);
+  P(ctx, x, y, 3.6, 5.2, 2.8, 0.8, ROYAL.gold);
+  P(ctx, x, y, 4.4, 6, 1.2, 0.6, ROYAL.goldDark);
+  P(ctx, x, y, 3.4, 3.4, 1.2, 0.8, ROYAL.goldLight);
+  P(ctx, x, y, 4.4, 2.6, 1.2, 0.8, ROYAL.goldLight);
+  P(ctx, x, y, 5.4, 3.4, 1.2, 0.8, ROYAL.goldLight);
+  // Tiny crown on top
+  P(ctx, x, y, 3.6, 0.2, 2.8, 0.6, ROYAL.goldLight);
+  P(ctx, x, y, 3.6, -0.2, 0.5, 0.5, ROYAL.goldLight);
+  P(ctx, x, y, 4.75, -0.3, 0.5, 0.6, ROYAL.goldLight);
+  P(ctx, x, y, 5.9, -0.2, 0.5, 0.5, ROYAL.goldLight);
+};
+
+const drawMarble = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  // Checkerboard of two marble shades: each tile is split into four squares.
+  ctx.fillStyle = ROYAL.marble;
+  ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+  P(ctx, x, y, 5, 0, 5, 5, ROYAL.marbleDark);
+  P(ctx, x, y, 0, 5, 5, 5, ROYAL.marbleDark);
+  // Veins
+  P(ctx, x, y, 1, 1.5, 2, 0.3, ROYAL.marbleVein);
+  P(ctx, x, y, 2.6, 1.8, 1.2, 0.3, ROYAL.marbleVein);
+  P(ctx, x, y, 6, 6.6, 2.4, 0.3, "#dcd6cb");
+  P(ctx, x, y, 6.4, 2.6, 1.6, 0.3, "#c0b8aa");
+  P(ctx, x, y, 1.4, 7.4, 1.8, 0.3, "#c0b8aa");
+  // Gold inlay dot where the squares meet
+  P(ctx, x, y, 4.6, 4.6, 0.8, 0.8, ROYAL.gold);
+  P(ctx, x, y, 0, 0, 10, 0.15, "#bfb7a8");
+  P(ctx, x, y, 0, 0, 0.15, 10, "#bfb7a8");
+};
+
+const drawRoyalCarpet = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  part: "left" | "center" | "right"
+) => {
+  if (part !== "center") drawMarble(ctx, x, y);
+  // The carpet covers the centre tile and the inner half of the side tiles.
+  const gx = part === "left" ? 4 : 0;
+  const gw = part === "center" ? 10 : 6;
+  P(ctx, x, y, gx, 0, gw, 10, ROYAL.carpet);
+  P(ctx, x, y, gx, 2, gw, 0.3, ROYAL.carpetDark);
+  P(ctx, x, y, gx, 7, gw, 0.3, ROYAL.carpetDark);
+  if (part === "left") {
+    P(ctx, x, y, 4, 0, 1, 10, ROYAL.gold);
+    P(ctx, x, y, 4.2, 0, 0.3, 10, ROYAL.goldLight);
+    P(ctx, x, y, 5.6, 0, 0.3, 10, ROYAL.goldDark);
+  } else if (part === "right") {
+    P(ctx, x, y, 5, 0, 1, 10, ROYAL.gold);
+    P(ctx, x, y, 5.5, 0, 0.3, 10, ROYAL.goldLight);
+    P(ctx, x, y, 4.1, 0, 0.3, 10, ROYAL.goldDark);
+  } else {
+    // Gold diamond pattern down the middle
+    P(ctx, x, y, 4.4, 3.2, 1.2, 1.2, ROYAL.gold);
+    P(ctx, x, y, 3.6, 4, 2.8, 0.4, ROYAL.goldDark);
+    P(ctx, x, y, 4.4, 4.4, 1.2, 1.2, ROYAL.gold);
+    P(ctx, x, y, 4.7, 3.6, 0.6, 1.6, ROYAL.goldLight);
+  }
+};
+
+const drawPillar = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  drawMarble(ctx, x, y);
+  ctx.fillStyle = "rgba(0,0,0,0.18)";
+  ctx.fillRect(x + 2 * PIX, y + 9 * PIX, 7 * PIX, PIX);
+  // Fluted marble shaft
+  P(ctx, x, y, 2.4, 1.6, 5.2, 7, "#f4f1eb");
+  P(ctx, x, y, 2.4, 1.6, 0.8, 7, "#ffffff");
+  P(ctx, x, y, 6.6, 1.6, 1, 7, "#cfc8bb");
+  P(ctx, x, y, 4, 1.6, 0.4, 7, "#ddd6ca");
+  P(ctx, x, y, 5.4, 1.6, 0.4, 7, "#ddd6ca");
+  // Gold capital and base
+  P(ctx, x, y, 1.6, 0, 6.8, 1.6, ROYAL.gold);
+  P(ctx, x, y, 1.6, 0, 6.8, 0.5, ROYAL.goldLight);
+  P(ctx, x, y, 1.6, 1.3, 6.8, 0.3, ROYAL.goldDark);
+  P(ctx, x, y, 1.6, 8.4, 6.8, 1.4, ROYAL.gold);
+  P(ctx, x, y, 1.6, 8.4, 6.8, 0.4, ROYAL.goldLight);
+  P(ctx, x, y, 1.6, 9.5, 6.8, 0.3, ROYAL.goldDark);
+};
+
+const drawDais = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  // Polished upper platform: darker veined marble with a gold grid
+  ctx.fillStyle = "#e2dccf";
+  ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+  P(ctx, x, y, 0, 0, 10, 0.3, ROYAL.goldDark);
+  P(ctx, x, y, 0, 0, 0.3, 10, ROYAL.goldDark);
+  P(ctx, x, y, 1.5, 2, 3, 0.3, "#cbc3b3");
+  P(ctx, x, y, 5.5, 6.5, 3, 0.3, "#cbc3b3");
+  P(ctx, x, y, 7, 2.4, 1.6, 0.3, "#f2eee6");
+};
+
+const drawThrone = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  drawDais(ctx, x, y);
+  ctx.fillStyle = "rgba(0,0,0,0.2)";
+  ctx.fillRect(x + 1.5 * PIX, y + 9 * PIX, 7 * PIX, PIX);
+  // Tall gold back with a red cushion
+  P(ctx, x, y, 2, 0, 6, 9.4, ROYAL.goldDark);
+  P(ctx, x, y, 2.4, 0.3, 5.2, 8.8, ROYAL.gold);
+  P(ctx, x, y, 3.2, 1.2, 3.6, 4.6, ROYAL.carpet);
+  P(ctx, x, y, 3.2, 1.2, 3.6, 0.6, ROYAL.carpetLight);
+  // Crown finial
+  P(ctx, x, y, 3.6, -0.4, 2.8, 0.8, ROYAL.goldLight);
+  P(ctx, x, y, 4.7, -0.9, 0.6, 0.6, "#e23b4e");
+  // Seat and armrests
+  P(ctx, x, y, 1.4, 5.8, 7.2, 1.4, ROYAL.gold);
+  P(ctx, x, y, 2.6, 6.2, 4.8, 1.8, ROYAL.carpetDark);
+  P(ctx, x, y, 1.4, 5.8, 7.2, 0.4, ROYAL.goldLight);
+  P(ctx, x, y, 1.6, 7.2, 0.8, 2.2, ROYAL.goldDark);
+  P(ctx, x, y, 7.6, 7.2, 0.8, 2.2, ROYAL.goldDark);
+};
+
+const drawDaisFace = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  // Front of the raised platform: marble panels framed in gold
+  ctx.fillStyle = "#cfc7b8";
+  ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+  P(ctx, x, y, 0, 0, 10, 0.5, ROYAL.gold);
+  P(ctx, x, y, 0.8, 1.2, 8.4, 7.6, ROYAL.goldDark);
+  P(ctx, x, y, 1.1, 1.5, 7.8, 7, "#ddd6c8");
+  P(ctx, x, y, 1.1, 1.5, 7.8, 0.5, "#ebe6dc");
+  P(ctx, x, y, 1.1, 8, 7.8, 0.5, "#bdb4a3");
+  P(ctx, x, y, 4.4, 4.4, 1.2, 1.2, ROYAL.gold);
+  P(ctx, x, y, 0, 9.5, 10, 0.5, "#9e9584");
+};
+
+const drawBalustrade = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  drawDais(ctx, x, y);
+  // Gold railing along the platform edge
+  P(ctx, x, y, 0, 4, 10, 1, ROYAL.gold);
+  P(ctx, x, y, 0, 4, 10, 0.4, ROYAL.goldLight);
+  for (const bx of [0.8, 3.3, 5.8, 8.3]) {
+    P(ctx, x, y, bx, 5, 1, 4, ROYAL.goldDark);
+    P(ctx, x, y, bx + 0.15, 5.6, 0.7, 2.6, ROYAL.gold);
+  }
+  P(ctx, x, y, 0, 9, 10, 1, ROYAL.goldDark);
+};
+
+const drawBanister = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  // Gold handrail running down the side of the stairs
+  drawDaisFace(ctx, x, y);
+  P(ctx, x, y, 2.5, 0, 5, 10, "#b9a476");
+  P(ctx, x, y, 3, 0, 4, 10, ROYAL.gold);
+  P(ctx, x, y, 3.2, 0, 1, 10, ROYAL.goldLight);
+  P(ctx, x, y, 6, 0, 0.8, 10, ROYAL.goldDark);
+  for (let i = 0; i < 3; i++) P(ctx, x, y, 2.2, 1 + i * 3.3, 5.6, 0.8, ROYAL.goldDark);
+};
+
+const drawGrandStairs = (
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  runner: boolean
+) => {
+  // Three wide marble steps per tile: light tread, gold nosing, shadowed riser
+  ctx.fillStyle = "#b8b0a2";
+  ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+  for (let i = 0; i < 3; i++) {
+    const gy = i * 3.333;
+    P(ctx, x, y, 0, gy, 10, 1.9, "#f2eee6");
+    P(ctx, x, y, 0, gy, 10, 0.35, "#ffffff");
+    P(ctx, x, y, 0, gy + 1.9, 10, 0.4, ROYAL.gold);
+    P(ctx, x, y, 0, gy + 2.3, 10, 1.03, "#a59c8c");
+    if (runner) {
+      // The red carpet continues up the middle of the stairs
+      P(ctx, x, y, 0, gy, 10, 2.3, ROYAL.carpet);
+      P(ctx, x, y, 0, gy, 10, 0.35, ROYAL.carpetLight);
+      P(ctx, x, y, 0, gy + 2.3, 10, 1.03, ROYAL.carpetDark);
+      P(ctx, x, y, 0, gy + 1.9, 10, 0.4, ROYAL.gold); // stair rods
+    }
+  }
+};
+
+const drawTopiary = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
+  drawMarble(ctx, x, y);
+  ctx.fillStyle = "rgba(0,0,0,0.18)";
+  ctx.fillRect(x + 2.5 * PIX, y + 9.2 * PIX, 5 * PIX, 0.8 * PIX);
+  // Gold urn
+  P(ctx, x, y, 3, 6.4, 4, 3, ROYAL.gold);
+  P(ctx, x, y, 2.6, 6.2, 4.8, 0.8, ROYAL.goldLight);
+  P(ctx, x, y, 6, 6.8, 1, 2.6, ROYAL.goldDark);
+  // Round clipped bush
+  ctx.fillStyle = "#2f6b34";
+  ctx.beginPath();
+  ctx.arc(x + 5 * PIX, y + 3.8 * PIX, 3.2 * PIX, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#4a9150";
+  ctx.beginPath();
+  ctx.arc(x + 4.2 * PIX, y + 3 * PIX, 1.8 * PIX, 0, Math.PI * 2);
+  ctx.fill();
+  P(ctx, x, y, 3.6, 2.2, 0.8, 0.8, "#6fb874");
+};
+
+const drawRoyalDoor = (ctx: CanvasRenderingContext2D, x: number, y: number, grand: boolean) => {
+  drawRoyalWall(ctx, x, y);
+  // Gold arch frame
+  P(ctx, x, y, 1.2, 0.6, 7.6, 9.4, ROYAL.goldDark);
+  P(ctx, x, y, 1.5, 0.9, 7, 9.1, ROYAL.gold);
+  P(ctx, x, y, 2.6, 0.3, 4.8, 0.6, ROYAL.gold);
+  if (grand) {
+    // The entrance: double doors standing open, daylight beyond
+    P(ctx, x, y, 2.2, 1.6, 5.6, 8.4, "#f6e7c0");
+    P(ctx, x, y, 2.2, 1.6, 5.6, 2, "#fff6dc");
+    P(ctx, x, y, 2.2, 1.6, 1, 8.4, "#5a2a14");
+    P(ctx, x, y, 6.8, 1.6, 1, 8.4, "#5a2a14");
+  } else {
+    // Closed dark wood double doors with gold handles
+    P(ctx, x, y, 2.2, 1.6, 5.6, 8.4, "#4a2414");
+    P(ctx, x, y, 2.6, 2, 2.2, 7.6, "#6a3418");
+    P(ctx, x, y, 5.2, 2, 2.2, 7.6, "#6a3418");
+    P(ctx, x, y, 4.85, 1.6, 0.3, 8.4, "#2a120a");
+    P(ctx, x, y, 4.2, 5.4, 0.5, 0.8, ROYAL.goldLight);
+    P(ctx, x, y, 5.3, 5.4, 0.5, 0.8, ROYAL.goldLight);
+  }
+};
+
 // ============ DISPATCH ============
 
 export const drawTile = (
@@ -628,6 +988,52 @@ export const drawTile = (
       return drawBookshelf(ctx, x, y);
     case "bench":
       return drawBench(ctx, x, y);
+    case "doorTunnel":
+      return drawTunnelDoor(ctx, x, y);
+    case "hallOfFame":
+      return drawHallOfFame(ctx, x, y);
+    case "pedestal":
+      return drawPedestal(ctx, x, y);
+    case "royalTop":
+      return drawRoyalTop(ctx, x, y);
+    case "royalWall":
+      return drawRoyalWall(ctx, x, y);
+    case "royalBanner":
+      return drawRoyalBanner(ctx, x, y);
+    case "royalSconce":
+      return drawRoyalSconce(ctx, x, y, animFrame);
+    case "royalCrest":
+      return drawRoyalCrest(ctx, x, y);
+    case "pillar":
+      return drawPillar(ctx, x, y);
+    case "throne":
+      return drawThrone(ctx, x, y);
+    case "dais":
+      return drawDais(ctx, x, y);
+    case "daisFace":
+      return drawDaisFace(ctx, x, y);
+    case "balustrade":
+      return drawBalustrade(ctx, x, y);
+    case "banister":
+      return drawBanister(ctx, x, y);
+    case "stairsGrand":
+      return drawGrandStairs(ctx, x, y, false);
+    case "stairsGrandRunner":
+      return drawGrandStairs(ctx, x, y, true);
+    case "marble":
+      return drawMarble(ctx, x, y);
+    case "carpetL":
+      return drawRoyalCarpet(ctx, x, y, "left");
+    case "carpetC":
+      return drawRoyalCarpet(ctx, x, y, "center");
+    case "carpetR":
+      return drawRoyalCarpet(ctx, x, y, "right");
+    case "topiary":
+      return drawTopiary(ctx, x, y);
+    case "doorRoyal":
+      return drawRoyalDoor(ctx, x, y, false);
+    case "doorGrand":
+      return drawRoyalDoor(ctx, x, y, true);
     case "buildingRoofTop":
     case "buildingRoofBase":
     case "buildingWall":
@@ -669,7 +1075,7 @@ const getTileCanvas = (
   const isBuilding = tile.startsWith("building");
   const key = isBuilding
     ? `${tile}|${building?.roofColor ?? ""}|${building?.wallColor ?? ""}`
-    : `${tile}|${tile === "water" ? animFrame : 0}`;
+    : `${tile}|${ANIMATED_TILES.has(tile) ? animFrame : 0}`;
 
   let c = tileCache.get(key);
   if (!c) {
